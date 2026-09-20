@@ -1,20 +1,18 @@
 /**
  * 利用者の識別（REQUIREMENTS.md §6.2 真正性）
  *
- * ゼミ規模では個人ごとの厳格なパスワード運用は現実的でないため、
- * 個人は「名前を選ぶだけ」。アクセス制御はプロジェクトのパスコードが担う。
+ * アクセス制御はアプリ共通の合言葉が担い、個人は名前を入れるだけ。
  * ここで分かるのは「誰が編集したと自称しているか」まで、という前提を崩さない。
  */
 
 import "server-only";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { activityLogs, users } from "@/db/schema";
-import { USER_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 import { newId } from "@/lib/ids";
-
-const ONE_YEAR = 60 * 60 * 24 * 365;
 
 /** 同じ名前なら同じUserを使い回す。名簿を作らせない */
 export async function resolveUser(displayName: string): Promise<string> {
@@ -31,19 +29,20 @@ export async function resolveUser(displayName: string): Promise<string> {
     await db.insert(users).values({ id, displayName: name, role: "member" });
   }
 
-  const store = await cookies();
-  store.set(USER_COOKIE, id, {
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: ONE_YEAR,
-    path: "/",
-  });
   return id;
 }
 
+/** 署名を検証したうえで利用者IDを返す。proxyのチェックは楽観的なのでここが本番 */
 export async function currentUserId(): Promise<string | null> {
   const store = await cookies();
-  return store.get(USER_COOKIE)?.value ?? null;
+  return verifySession(store.get(SESSION_COOKIE)?.value);
+}
+
+/** ログイン必須のページ・処理で使う。未ログインならログイン画面へ送る */
+export async function requireSession(): Promise<string> {
+  const userId = await currentUserId();
+  if (!userId) redirect("/login");
+  return userId;
 }
 
 export async function currentUserName(): Promise<string | null> {

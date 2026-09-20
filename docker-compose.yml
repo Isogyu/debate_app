@@ -7,6 +7,8 @@ services:
       # APIキーはホスト側の .env から渡す。イメージに焼き込まない
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       DEBATE_MODEL: ${DEBATE_MODEL:-claude-sonnet-5}
+      DEBATE_APP_PASSWORD: ${DEBATE_APP_PASSWORD}
+      DEBATE_SESSION_SECRET: ${DEBATE_SESSION_SECRET:-}
       DEBATE_ADMIN_PASSCODE: ${DEBATE_ADMIN_PASSCODE}
       DEBATE_DATA_DIR: /app/data
     volumes:

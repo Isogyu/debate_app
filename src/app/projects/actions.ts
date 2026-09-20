@@ -15,10 +15,16 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { issueCategories, projects, teams } from "@/db/schema";
 import type { LawRef, ResolutionAnalysis, Side } from "@/domain/types";
+import { randomUUID } from "node:crypto";
 import { hashPasscode } from "@/lib/auth";
 import { newId, nowIso } from "@/lib/ids";
 import { createJob, latestJob, retryStep, runJob } from "@/lib/jobs/runner";
-import { currentUserId, log, resolveUser } from "@/lib/session";
+import {
+  currentUserId,
+  currentUserName,
+  log,
+  requireSession,
+} from "@/lib/session";
 
 export interface FormState {
   error?: string;
@@ -31,8 +37,6 @@ export async function createProject(
 ): Promise<FormState> {
   const resolution = String(formData.get("resolution") ?? "").trim();
   const side = String(formData.get("side") ?? "") as Side;
-  const authorName = String(formData.get("authorName") ?? "").trim();
-  const passcode = String(formData.get("passcode") ?? "");
   const teamName = String(formData.get("teamName") ?? "").trim();
   const membersRaw = String(formData.get("members") ?? "").trim();
   const isCompetitionTopic = formData.get("isCompetitionTopic") === "on";
@@ -44,19 +48,10 @@ export async function createProject(
   if (side !== "affirmative" && side !== "negative") {
     return { error: "あなたの立場（肯定側／否定側）を選んでください。" };
   }
-  if (!authorName) {
-    return { error: "お名前を入力してください。誰が作ったかの記録に使います。" };
-  }
-  if (passcode.length < 4) {
-    return {
-      error:
-        "合言葉を4文字以上で決めてください。チームのメンバーに口頭で伝える想定です。",
-    };
-  }
+  // ログイン済みの利用者。アクセス制御はアプリ共通の合言葉が担う（§6.2）
+  const userId = await requireSession();
+  const authorName = (await currentUserName()) ?? "unknown";
 
-  const userId = await resolveUser(authorName);
-
-  // チームはプロジェクトの分離単位。名前が未入力なら本人の名前で作る
   const teamId = newId("team");
   await db.insert(teams).values({ id: teamId, name: teamName || authorName });
 
@@ -70,7 +65,9 @@ export async function createProject(
     teamName: teamName || null,
     members: membersRaw ? membersRaw.split(/[\s,、　]+/).filter(Boolean) : null,
     ownerTeamId: teamId,
-    passcodeHash: hashPasscode(passcode), // 平文は保存しない
+    // 共通パスワード運用のためプロジェクト個別のパスコードは使わない。
+    // 将来チームごとに分ける場合に備えて列は残し、無効な値を入れておく
+    passcodeHash: hashPasscode(randomUUID()),
     isCompetitionTopic,
     status: "analyzing",
   });

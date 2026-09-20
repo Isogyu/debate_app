@@ -119,45 +119,11 @@ export function WizardForm() {
         </div>
       </section>
 
-      <section className="space-y-3 rounded border border-[var(--line)] p-4">
-        <p className="font-bold">このプロジェクトを守る設定</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-sm">
-              お名前 <span className="text-[var(--neg)]">*</span>
-            </span>
-            <input
-              name="authorName"
-              required
-              disabled={pending}
-              className="w-full rounded border border-[var(--line)] p-2"
-            />
-            <span className="mt-1 block text-xs text-[var(--muted)]">
-              誰が作ったか・誰が直したかの記録に使います。
-            </span>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm">
-              合言葉 <span className="text-[var(--neg)]">*</span>
-            </span>
-            <input
-              name="passcode"
-              type="password"
-              required
-              minLength={4}
-              disabled={pending}
-              className="w-full rounded border border-[var(--line)] p-2"
-            />
-            <span className="mt-1 block text-xs text-[var(--muted)]">
-              チームで共有する4文字以上の合言葉。他のチームに立論を見られないようにします。
-            </span>
-          </label>
-        </div>
+      <section className="rounded border border-[var(--line)] p-4">
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
             name="isCompetitionTopic"
-            defaultChecked
             disabled={pending}
             className="mt-1"
           />
@@ -165,7 +131,7 @@ export function WizardForm() {
             これは<b>本番の大会で使う論題</b>です
             <span className="block text-xs text-[var(--muted)]">
               チェックを入れると、この立論は練習用の教材として公開できなくなります。
-              大会前の立論は競技上の秘匿情報のためです。
+              大会前の立論は競技上の秘匿情報のためです。練習用の論題ならチェック不要です。
             </span>
           </span>
         </label>

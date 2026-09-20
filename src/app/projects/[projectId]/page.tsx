@@ -12,6 +12,7 @@ import { db } from "@/db";
 import {
   blocks,
   caseVariants,
+  crossExamNodes,
   issueCategories,
   projects,
   rebuttals,
@@ -36,13 +37,14 @@ export default async function DashboardPage({
     .where(eq(projects.id, projectId));
   if (!project) notFound();
 
-  const [variants, materials, blockRows, rebuttalRows, categories, job] =
+  const [variants, materials, blockRows, rebuttalRows, categories, cxRows, job] =
     await Promise.all([
       db.select().from(caseVariants).where(eq(caseVariants.projectId, projectId)),
       db.select().from(sourceMaterials).where(eq(sourceMaterials.projectId, projectId)),
       db.select().from(blocks).where(eq(blocks.projectId, projectId)),
       db.select().from(rebuttals).where(eq(rebuttals.projectId, projectId)),
       db.select().from(issueCategories).where(eq(issueCategories.projectId, projectId)),
+      db.select().from(crossExamNodes).where(eq(crossExamNodes.projectId, projectId)),
       latestJob(projectId),
     ]);
 
@@ -119,9 +121,18 @@ export default async function DashboardPage({
             ready={materials.length > 0}
           />
           <Card
-            title="反駁"
+            title="質疑フロー"
+            href={`/projects/${projectId}/crossexam`}
+            lines={[`${cxRows.length}ノード`, "練習モードあり"]}
+            ready={cxRows.length > 0}
+          />
+          <Card
+            title="反駁・比較"
             href={`/projects/${projectId}/rebuttal`}
-            lines={[`${rebuttalRows.length}件`]}
+            lines={[
+              `反駁 ${rebuttalRows.length}件`,
+              project.comparison ? "比較表あり" : "比較表なし",
+            ]}
             ready={rebuttalRows.length > 0}
           />
           <Card
