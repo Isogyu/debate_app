@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="UTF-8"><title>質疑フロー | ディベート支援</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header>
+  <div class="logo"><a href="index.html">ディベート支援</a></div>
+  <nav><a href="practice.html">練習問題</a><a href="guide.html">ガイド</a><a href="admin.html">管理</a></nav>
+</header>
+<main>
+  <div class="breadcrumb"><a href="index.html">ホーム</a> &gt; <a href="dashboard.html">所得税法56・57条</a> &gt; 質疑フロー</div>
+  <h1>質疑フローチャート</h1>
+  <p>対象: <select style="width:auto;"><option>相手（否定側）の立論を攻める</option><option>相手から受ける質疑に備える</option></select>
+     表示: <a class="btn small" href="#">ツリー</a> <a class="btn small secondary" href="#">練習モード</a></p>
+
+  <div class="grid" style="grid-template-columns: 1.4fr 1fr;">
+    <div class="card tree">
+      <ul>
+        <li><span class="q">Q1. なぜ親族への適正な対価まで経費にしないのか？</span>
+          <ul>
+            <li><span class="a">→「所得分散を防ぐため」</span>
+              <ul><li><span class="q">Q2. ではなぜ専従者給与の割合は減少し続けている？</span></li></ul>
+            </li>
+            <li><span class="a">→「生計を一にする親族は対象」</span>
+              <ul><li><span class="q">Q3. 「生計を一に」という線引きの合理的根拠は？</span></li></ul>
+            </li>
+          </ul>
+        </li>
+        <li><span class="q">Q4. 廃止すると税務行政の負担が増えると言うが、DXで代替できないか？</span>
+          <ul>
+            <li><span class="a">→「代替できない」</span>
+              <ul><li><span class="q">Q5. 具体的にどの業務がどの程度増えるのか？</span></li></ul>
+            </li>
+            <li><span class="a">→「部分的に可能」</span>
+              <ul><li><span class="q">Q6. 可能な部分を差し引いても負担増は残るか？</span></li></ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <div class="card">
+      <b>ノード詳細</b>
+      <p><b>質問:</b> なぜ親族への適正な対価まで経費にしないのか？</p>
+      <p><b>意図:</b> 制度目的の前提（所得分散防止の必要性）を揺さぶる</p>
+      <p><b>狙い:</b> 「適正対価」と「恣意的分散」を区別しない理由を詰める</p>
+      <p><b>崩せる論証:</b> 相手の「公平」論証の前提が揺らぐ</p>
+    </div>
+  </div>
+  <p><a class="btn secondary" href="dashboard.html">← ダッシュボード</a></p>
+</main>
+</body>
+</html>

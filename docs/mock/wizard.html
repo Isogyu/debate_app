@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="UTF-8"><title>論題入力 | ディベート支援</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header>
+  <div class="logo"><a href="index.html">ディベート支援</a></div>
+  <nav><a href="practice.html">練習問題</a><a href="guide.html">ガイド</a><a href="admin.html">管理</a></nav>
+</header>
+<main>
+  <div class="breadcrumb"><a href="index.html">ホーム</a> &gt; 新しいプロジェクト</div>
+  <div class="steps">① <b>論題入力</b> ─ ② 分析確認 ─ ③ 生成</div>
+  <h1>論題を入力してください</h1>
+  <div class="card">
+    <p><textarea rows="3" placeholder="例: 日本は所得税法第56条および第57条を廃止すべきである">日本は所得税法第56条および第57条を廃止すべきである</textarea></p>
+    <p class="muted">※「〜すべきである」の形で書くと分析しやすくなります</p>
+  </div>
+
+  <h2>あなたの立場は？</h2>
+  <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="choice selected"><b>肯定側</b><br><span class="muted">「実施すべき」と主張する側</span></div>
+    <div class="choice"><b>否定側</b><br><span class="muted">「実施すべきでない」と主張する側</span></div>
+  </div>
+  <p class="muted">※両側の立論はどちらにしても自動生成されます。ここでは自分が準備する側を選びます。</p>
+
+  <h2>チーム情報（任意）</h2>
+  <div class="card">
+    <p>チーム名 <input type="text" value="○○大学" style="width: 240px;"></p>
+    <p>メンバー <input type="text" value="メンバーA　メンバーB　メンバーC"></p>
+    <p class="muted">※Word/PDF出力の表紙に使います</p>
+  </div>
+
+  <p style="text-align:right;"><a class="btn big" href="analysis.html">論題を分析する →</a></p>
+</main>
+</body>
+</html>

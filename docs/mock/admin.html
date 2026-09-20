@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="UTF-8"><title>管理 | ディベート支援</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header>
+  <div class="logo"><a href="index.html">ディベート支援</a></div>
+  <nav><a href="practice.html">練習問題</a><a href="guide.html">ガイド</a><a href="admin.html">管理</a></nav>
+</header>
+<main>
+  <h1>管理</h1>
+  <p><a class="btn small" href="#">バリエーション生成</a> <a class="btn small secondary" href="#">品質スコア</a> <a class="btn small secondary" href="#">事例DB</a> <a class="btn small secondary" href="#">モデル・コスト</a></p>
+
+  <h2>立論バリエーション生成</h2>
+  <div class="card">
+    <p><b>対象論題:</b> 日本は所得税法第56条および第57条を廃止すべきである <span class="muted">（本番のお題。決定後に一括実行）</span></p>
+    <p><b>生成パターンの組み合わせ:</b><br>
+    枠組み: [租税公平主義] [税の基本原則] [経済効率] … ×<br>
+    構成: [環境変化型] [比較衡量型] × 側: [肯定] [否定]</p>
+    <p class="muted">→ 1論題あたり十数パターンの立論を量産。相手の想定立論の網羅＋自側の選択肢化</p>
+    <a class="btn" href="#">バリエーションを一括生成</a>
+  </div>
+
+  <h2>生成結果（スコア順）</h2>
+  <table>
+    <tr><th>スコア</th><th>側</th><th>枠組み・切り口</th><th>状態</th><th>操作</th></tr>
+    <tr><td>92</td><td>肯定</td><td>租税公平主義 / 環境変化型</td><td>レビュー済</td><td><a href="#">採用</a> <a href="#">相手想定に</a></td></tr>
+    <tr><td>85</td><td>否定</td><td>税の基本原則 / 比較衡量型</td><td>レビュー済</td><td><a href="#">採用</a> <a href="#">相手想定に</a></td></tr>
+    <tr><td>74</td><td>肯定</td><td>担税力特化 / 比較衡量型</td><td>未レビュー</td><td><a href="#">確認</a></td></tr>
+    <tr><td>61</td><td>否定</td><td>簡素性特化 / 環境変化型</td><td>未レビュー</td><td><a href="#">確認</a></td></tr>
+  </table>
+  <p class="muted">※高スコアのものを「採用立論」に、それ以外も「相手の想定パターン」としてブロック集に活かせる</p>
+
+  <h2>APIコスト（今月）</h2>
+  <div class="card">
+    生成: 152,400トークン / 練習: 38,200トークン<br>
+    <b>概算: ¥1,240</b>
+    <p class="muted">※この情報は管理画面のみに表示。一般ユーザーには非表示</p>
+  </div>
+  <p><a class="btn secondary" href="index.html">← ホーム</a></p>
+</main>
+</body>
+</html>

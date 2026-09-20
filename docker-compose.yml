@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      # APIキーはホスト側の .env から渡す。イメージに焼き込まない
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      DEBATE_MODEL: ${DEBATE_MODEL:-claude-sonnet-5}
+      DEBATE_ADMIN_PASSCODE: ${DEBATE_ADMIN_PASSCODE}
+      DEBATE_DATA_DIR: /app/data
+    volumes:
+      # これを外すとコンテナを作り直した瞬間に全データが消える
+      - ./data:/app/data
+    restart: unless-stopped

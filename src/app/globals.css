@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --muted: #5c5c5c;
+  --line: #d9d9d9;
+  --accent: #1d4ed8;
+  --aff: #15803d;
+  --neg: #c2410c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  /* 日本語を優先。ゼミ生のPCは環境がバラバラなのでOS標準フォントに委ねる */
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, system-ui,
+    sans-serif;
+}
+
+/* 本番モードは会場で焦って読む画面。文字を詰めない（DESIGN §10 アクセシビリティ） */
+.live-mode {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
