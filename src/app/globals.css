@@ -31,3 +31,48 @@ body {
   font-size: 1.0625rem;
   line-height: 1.7;
 }
+
+/* ── 印刷（PDF保存）用 ─────────────────────────────────
+   PDFはサーバーで作らず、印刷ビュー＋このCSSでブラウザのPDF保存を使う。
+   Chromium同梱と日本語フォント同梱をDockerイメージから外せる（§6.1）。 */
+@media print {
+  /* 画面用の装飾を落として紙に最適化する */
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 10.5pt;
+  }
+  a {
+    color: #000;
+    text-decoration: none;
+  }
+  /* ブロック集は本番中に紙でめくる。カードが頁またぎで割れると探せない */
+  .print-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* カテゴリごとに頁を変えて、見出しで引けるようにする（§12） */
+  .print-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+  .print-page-break:first-of-type {
+    break-before: auto;
+    page-break-before: auto;
+  }
+}
+
+@page {
+  size: A4;
+  margin: 18mm 16mm;
+}
+
+/* 印刷ビューは画面で見るときも紙の見た目に寄せる */
+.print-sheet {
+  max-width: 180mm;
+  margin: 0 auto;
+  line-height: 1.8;
+}
