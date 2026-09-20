@@ -283,7 +283,14 @@ export interface GenerationJob {
   projectId: string;
   variantId?: string;
   steps: GenerationStepState[];
-  status: "queued" | "running" | "partial" | "done" | "failed";
+  /** awaiting_review = 論題分析だけ済み、人の確認待ち */
+  status:
+    | "queued"
+    | "running"
+    | "awaiting_review"
+    | "partial"
+    | "done"
+    | "failed";
   startedAt?: string;
   finishedAt?: string;
   createdBy: string;

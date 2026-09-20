@@ -10,7 +10,7 @@
  */
 
 import "server-only";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apiUsage, generationJobs, projects } from "@/db/schema";
 import { GEN_STEPS, GEN_STEP_LABELS } from "@/domain/types";
@@ -37,22 +37,41 @@ export async function createJob(
     status: "queued",
     createdBy,
   });
-  await db
-    .update(projects)
-    .set({ status: "generating", updatedAt: nowIso() })
-    .where(eq(projects.id, projectId));
   return id;
+}
+
+/** プロジェクトに紐づく最新のジョブ。画面は常にこれを見る */
+export async function latestJob(projectId: string) {
+  const rows = await db
+    .select()
+    .from(generationJobs)
+    .where(eq(generationJobs.projectId, projectId))
+    .orderBy(desc(generationJobs.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 async function saveSteps(jobId: string, steps: GenerationStepState[]) {
   await db.update(generationJobs).set({ steps }).where(eq(generationJobs.id, jobId));
 }
 
+export interface RunOptions {
+  /**
+   * 実行するステップを限定する。
+   * 論題分析だけを先に走らせ、人が確認してから残りを流すために使う
+   * （DESIGN §3 の品質ゲート）。
+   */
+  only?: GenStep[];
+}
+
 /**
  * ジョブ本体。APIハンドラからは await せずに起動する（即座に202を返すため）。
  * 管理者PC1台構成なので外部キューは使わず、DBをキューとして扱う。
  */
-export async function runJob(jobId: string): Promise<void> {
+export async function runJob(
+  jobId: string,
+  options: RunOptions = {},
+): Promise<void> {
   const [job] = await db
     .select()
     .from(generationJobs)
@@ -68,6 +87,7 @@ export async function runJob(jobId: string): Promise<void> {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (step.status === "done") continue; // 再開時は済んだステップを飛ばす
+    if (options.only && !options.only.includes(step.step)) continue;
 
     steps[i] = { ...step, status: "running" };
     await saveSteps(jobId, steps);
@@ -78,22 +98,41 @@ export async function runJob(jobId: string): Promise<void> {
   }
 
   const failed = steps.filter((s) => s.status === "failed").length;
-  const status =
-    failed === 0 ? "done" : failed === steps.length ? "failed" : "partial";
+  const pending = steps.filter((s) => s.status === "pending").length;
+
+  // まだ流していないステップが残っている＝人の確認待ち（品質ゲートの途中）
+  const status = pending > 0
+    ? (failed > 0 ? "failed" : "awaiting_review")
+    : failed === 0
+      ? "done"
+      : failed === steps.length
+        ? "failed"
+        : "partial";
 
   await db
     .update(generationJobs)
-    .set({ status, finishedAt: nowIso() })
+    .set({
+      status,
+      finishedAt: pending > 0 ? null : nowIso(),
+    })
     .where(eq(generationJobs.id, jobId));
 
-  // 一部失敗でも、できたところまでは使えるので ready にする
   await db
     .update(projects)
     .set({
-      status: status === "failed" ? "analyzing" : "ready",
+      status: projectStatusFor(status),
       updatedAt: nowIso(),
     })
     .where(eq(projects.id, job.projectId));
+}
+
+/** ジョブの状態をプロジェクトの表示ステータスに写す */
+function projectStatusFor(
+  jobStatus: "awaiting_review" | "done" | "partial" | "failed",
+): "analyzing" | "generating" | "ready" {
+  // 一部失敗でも、できたところまでは使えるので ready にする
+  if (jobStatus === "done" || jobStatus === "partial") return "ready";
+  return "analyzing";
 }
 
 async function attemptStep(
@@ -162,7 +201,7 @@ export async function retryStep(jobId: string, step: GenStep): Promise<void> {
     s.step === step ? { ...s, status: "pending" as const, error: undefined } : s,
   );
   await saveSteps(jobId, steps);
-  await runJob(jobId);
+  await runJob(jobId, { only: [step] });
 }
 
 /** 進捗表示用（DESIGN §1/§4 の「5/8」の実体） */

@@ -98,6 +98,11 @@ async function stepAnalysis(projectId: string): Promise<LlmUsage> {
     schema: analysisOutputSchema,
   });
 
+  // 再実行されても重複しないよう、いったん消してから入れ直す
+  await db
+    .delete(issueCategories)
+    .where(eq(issueCategories.projectId, projectId));
+
   await db.insert(issueCategories).values(
     data.categories.map((c, i) => ({
       id: newId("cat"),

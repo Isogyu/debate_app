@@ -231,7 +231,15 @@ export const generationJobs = sqliteTable(
       .$type<GenerationStepState[]>()
       .notNull(),
     status: text("status", {
-      enum: ["queued", "running", "partial", "done", "failed"],
+      // awaiting_review = 論題分析だけ済み、人の確認待ち（DESIGN §3 品質ゲート）
+      enum: [
+        "queued",
+        "running",
+        "awaiting_review",
+        "partial",
+        "done",
+        "failed",
+      ],
     })
       .notNull()
       .default("queued"),
