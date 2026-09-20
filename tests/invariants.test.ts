@@ -106,6 +106,36 @@ test("【法37条1項、資料2参照】のような複合マーカーも番号�
   assert.ok(result.debateCase.fullText.includes("【法37条1項、資料1参照】"));
 });
 
+test("本文で参照の順序を入れ替えたら、番号も読み順に振り直される", () => {
+  // sourceRefIds の順は r_a, r_b だが、本文では 資料5(r_a) より先に 資料2(r_b) が出る。
+  // 人が本文を編集して順序を入れ替えた状況にあたる。
+  const refs = [ref("r_a", 5), ref("r_b", 2)];
+  const claims = [
+    claim("c1", ["r_a", "r_b"], "まず公平【資料2参照】、次に担税力【資料5参照】。"),
+  ];
+  const result = renumberSourceRefs(
+    variant(refs, claims, "まず公平【資料2参照】、次に担税力【資料5参照】。"),
+  );
+
+  // 本文の登場順に従って r_b が1番になる
+  assert.equal(result.sourceRefs.find((r) => r.id === "r_b")?.number, 1);
+  assert.equal(result.sourceRefs.find((r) => r.id === "r_a")?.number, 2);
+  assert.equal(
+    result.debateCase.sections[0].subsections[0].claim,
+    "まず公平【資料1参照】、次に担税力【資料2参照】。",
+  );
+});
+
+test("本文にマーカーがない参照は、マーカー付きの後ろに回る", () => {
+  const refs = [ref("r_a", 1), ref("r_b", 2)];
+  // r_a は参照しているだけで本文にマーカーがない。r_b だけ本文に出る
+  const claims = [claim("c1", ["r_a", "r_b"], "本文【資料2参照】。")];
+  const result = renumberSourceRefs(variant(refs, claims, "本文【資料2参照】。"));
+
+  assert.equal(result.sourceRefs.find((r) => r.id === "r_b")?.number, 1);
+  assert.equal(result.sourceRefs.find((r) => r.id === "r_a")?.number, 2);
+});
+
 test("本文から参照されていない資料要件も削除せず末尾に残す", () => {
   const refs = [ref("r_a", 1), ref("r_orphan", 2)];
   const claims = [claim("c1", ["r_a"], "【資料1参照】")];

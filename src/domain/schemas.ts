@@ -192,6 +192,18 @@ export const comparisonOutputSchema = z.object({
 });
 export type ComparisonOutput = z.infer<typeof comparisonOutputSchema>;
 
+/**
+ * サブセクション1つ分の再生成（DESIGN §5「この部分を再生成」）。
+ * 資料参照は既存の番号をそのまま使わせるため、slot宣言は求めない。
+ */
+export const claimRegenerationSchema = z.object({
+  claim: z.string().min(1),
+  warrant: z.string(),
+  causalChain: z.array(z.string()),
+  impact: z.string(),
+});
+export type ClaimRegeneration = z.infer<typeof claimRegenerationSchema>;
+
 export const STEP_SCHEMAS = {
   analysis: analysisOutputSchema,
   case_outline: caseOutlineOutputSchema,

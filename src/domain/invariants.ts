@@ -33,8 +33,19 @@ const REF_MARKER = /【([^】]*?)資料(\d+)参照】/g;
  */
 export function renumberSourceRefs(variant: CaseVariant): CaseVariant {
   const appearanceOrder: string[] = [];
+  const refIdByOldNumber = new Map(
+    variant.sourceRefs.map((r) => [r.number, r.id]),
+  );
 
-  // 立論の構造をたどって、Claimが参照する順に資料参照IDを並べる
+  // まず本文中の【資料N参照】を読み上げ順に拾う。
+  // 人が本文を編集して参照の順序を入れ替えても、番号が読み順に従うようにする。
+  for (const text of walkCaseTexts(variant.debateCase)) {
+    for (const m of text.matchAll(REF_MARKER)) {
+      const refId = refIdByOldNumber.get(Number(m[2]));
+      if (refId && !appearanceOrder.includes(refId)) appearanceOrder.push(refId);
+    }
+  }
+  // 次に、本文にマーカーはないがClaimが参照している資料
   for (const section of variant.debateCase.sections) {
     for (const claim of section.subsections) {
       for (const refId of claim.sourceRefIds) {
@@ -42,7 +53,7 @@ export function renumberSourceRefs(variant: CaseVariant): CaseVariant {
       }
     }
   }
-  // 本文からは参照されていない資料要件も末尾に残す（削除はしない）
+  // 最後に、どこからも参照されていない資料要件。削除はしない
   for (const ref of variant.sourceRefs) {
     if (!appearanceOrder.includes(ref.id)) appearanceOrder.push(ref.id);
   }
@@ -67,6 +78,20 @@ export function renumberSourceRefs(variant: CaseVariant): CaseVariant {
     sourceRefs,
     debateCase: rewriteRefMarkers(variant.debateCase, oldToNew),
   };
+}
+
+/** 本文を読み上げ順（renderFullTextと同じ順序）でたどる */
+function* walkCaseTexts(debateCase: DebateCase): Generator<string> {
+  yield debateCase.claim;
+  for (const section of debateCase.sections) {
+    for (const sub of section.subsections) {
+      yield sub.claim;
+      yield sub.warrant;
+      yield sub.impact;
+      for (const step of sub.causalChain) yield step;
+    }
+  }
+  yield debateCase.conclusion;
 }
 
 function rewriteRefMarkers(

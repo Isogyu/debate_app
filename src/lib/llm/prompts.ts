@@ -286,3 +286,46 @@ ${negativeText}
 }
 `.trim();
 }
+
+export interface RegenerateClaimContext {
+  resolution: string;
+  side: "affirmative" | "negative";
+  framework: string;
+  sectionTitle: string;
+  claimTitle: string;
+  current: string;
+  /** 本文で使ってよい資料番号。これ以外を書かせない */
+  allowedRefNumbers: number[];
+}
+
+export function regenerateClaimPrompt(ctx: RegenerateClaimContext): string {
+  const refs = ctx.allowedRefNumbers.length
+    ? ctx.allowedRefNumbers.map((n) => `【資料${n}参照】`).join("、")
+    : "（この段落では資料を参照しません）";
+
+  return `
+立論の一部分だけを書き直してください。ほかの部分には手を触れません。
+
+論題: ${ctx.resolution}
+立場: ${ctx.side === "affirmative" ? "肯定側" : "否定側"}
+評価基準の枠組み: ${ctx.framework}
+このブロックの見出し: ${ctx.sectionTitle}
+書き直す段落の見出し: ${ctx.claimTitle}
+
+現在の本文:
+${ctx.current}
+
+【厳守】資料参照について
+この段落で使ってよいマーカーは次のものだけです: ${refs}
+- 新しい資料番号を作ってはいけません。資料要件との対応が壊れます。
+- 上のマーカーは、本文中の適切な位置にそのままの表記で残してください。
+
+出力するJSON:
+{
+  "claim": "書き直した本文（スピーチで読み上げる論述体）",
+  "warrant": "なぜそう言えるかの理由づけ",
+  "causalChain": ["因果の段階を一段ずつ"],
+  "impact": "論題の判断にどう効くか"
+}
+`.trim();
+}

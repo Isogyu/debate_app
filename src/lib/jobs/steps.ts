@@ -29,6 +29,7 @@ import type {
   SourceRequirement,
 } from "@/domain/types";
 import { validateVariant, assertNoCycle } from "@/domain/invariants";
+import { renderFullText } from "@/domain/case-format";
 import { sanitizeSuggestedSourceIds } from "@/domain/source-whitelist";
 import type { LlmUsage } from "@/lib/llm/provider";
 import { getLlmProvider } from "@/lib/llm/anthropic";
@@ -343,23 +344,6 @@ function replaceSlotMarkers(
     const ref = refs.find((r) => r.id === refId);
     return ref ? `【${prefix}資料${ref.number}参照】` : whole;
   });
-}
-
-/** 実フォーマット（§2.1）どおりの本文を組み立てる。Word出力もこれを使う */
-export function renderFullText(c: DebateCase): string {
-  const lines: string[] = ["Ⅰ. 主張", "", `　${c.claim}`, "", "Ⅱ. 理由", ""];
-  c.sections.forEach((s, i) => {
-    lines.push(`${i + 1}. ${s.title}`);
-    s.subsections.forEach((sub, j) => {
-      lines.push(`　（${j + 1}）${sub.title}`);
-      lines.push(`　　${sub.claim}`);
-      if (sub.warrant) lines.push(`　　${sub.warrant}`);
-      if (sub.impact) lines.push(`　　${sub.impact}`);
-      lines.push("");
-    });
-  });
-  lines.push("Ⅲ. 結論", "", `　${c.conclusion}`);
-  return lines.join("\n");
 }
 
 async function stepSourceRequirements(projectId: string): Promise<LlmUsage> {
