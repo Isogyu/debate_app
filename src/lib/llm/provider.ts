@@ -52,3 +52,17 @@ export class LlmConfigError extends Error {
     this.name = "LlmConfigError";
   }
 }
+
+/**
+ * 出力が上限に達して途中で切れた。
+ * JSONとしては必ず壊れるが、原因は「形式ミス」ではなく「長すぎ」なので区別する。
+ * 同じ上限でリトライしても必ず同じ結果になるため、リトライしない。
+ */
+export class LlmTruncatedError extends Error {
+  readonly outputTokens: number;
+  constructor(message: string, outputTokens: number) {
+    super(message);
+    this.name = "LlmTruncatedError";
+    this.outputTokens = outputTokens;
+  }
+}

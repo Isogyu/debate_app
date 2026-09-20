@@ -7,6 +7,20 @@
 
 import { z } from "zod";
 
+/**
+ * 任意の文字列項目。
+ *
+ * LLMは「値なし」を項目の省略ではなく `null` で表現することが多い。
+ * `.optional()` だけだと null を弾いてしまい、
+ * 「分岐の終端（次の質問がない）」のような正常な出力で生成全体が失敗する。
+ * 実際に質疑フローの生成がこれで落ちたため、null も受けて undefined に寄せる。
+ */
+const optionalText = z
+  .string()
+  .optional()
+  .nullable()
+  .transform((v) => v ?? undefined);
+
 const sideSchema = z.enum(["affirmative", "negative"]);
 
 const sectionTypeSchema = z.enum([
@@ -33,7 +47,7 @@ const attackPointSchema = z.enum(["premise", "evidence", "causality", "impact"])
 
 const evaluationFrameworkSchema = z.object({
   name: z.string().min(1),
-  basisLaw: z.string().optional(),
+  basisLaw: optionalText,
   criteria: z.array(z.string().min(1)).min(1),
 });
 
@@ -141,12 +155,12 @@ export const crossExamOutputSchema = z.object({
       question: z.string().min(1),
       purpose: z.string(),
       categoryNames: z.array(z.string()),
-      targetClaimTitle: z.string().optional(),
+      targetClaimTitle: optionalText,
       branches: z.array(
         z.object({
           expectedAnswer: z.string().min(1),
-          followUpKey: z.string().optional(),
-          exposedWeakness: z.string().optional(),
+          followUpKey: optionalText,
+          exposedWeakness: optionalText,
         }),
       ),
     }),

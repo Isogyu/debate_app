@@ -12,9 +12,12 @@ import type {
   LlmResult,
   StructuredRequest,
 } from "./provider";
-import { LlmConfigError, LlmSchemaError } from "./provider";
+import { LlmConfigError, LlmSchemaError, LlmTruncatedError } from "./provider";
 
 export const DEFAULT_MODEL = process.env.DEBATE_MODEL ?? "claude-sonnet-5";
+
+/** 出力の既定上限。切れると必ずJSONが壊れるので余裕を持たせる */
+export const DEFAULT_MAX_TOKENS = 12000;
 
 let client: Anthropic | null = null;
 
@@ -46,7 +49,8 @@ export class AnthropicProvider implements LlmProvider {
     const model = req.model ?? DEFAULT_MODEL;
     const response = await getClient().messages.create({
       model,
-      max_tokens: req.maxTokens ?? 8000,
+      // 日本語の構造化出力は嵩む。8000だと反駁・質疑が途中で切れた
+      max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
       system: `${req.system}\n\n出力は説明文を付けず、JSONオブジェクトのみを返してください。`,
       messages: [{ role: "user", content: req.prompt }],
     });
@@ -61,6 +65,15 @@ export class AnthropicProvider implements LlmProvider {
       outputTokens: response.usage.output_tokens,
       model,
     };
+
+    // 上限で切れたJSONは必ずパースに失敗する。
+    // 「読み取れませんでした」で片付けると原因に辿り着けないので先に判定する
+    if (response.stop_reason === "max_tokens") {
+      throw new LlmTruncatedError(
+        `AIの回答が長すぎて途中で切れました（出力上限 ${req.maxTokens ?? DEFAULT_MAX_TOKENS} トークン）。`,
+        response.usage.output_tokens,
+      );
+    }
 
     let parsed: unknown;
     try {

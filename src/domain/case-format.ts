@@ -60,6 +60,52 @@ export function splitRefs(text: string): TextPart[] {
   return parts;
 }
 
+/**
+ * 見出しの先頭に付いた番号を落とす。
+ * 「1.」「Ⅱ-1.」「（1）」などをLLMが書いてくることがあり、
+ * 表示側の採番と合わさって「1. Ⅱ-1. …」のように二重になるため。
+ */
+export function stripLeadingNumber(title: string): string {
+  return title
+    .replace(/^[\s　]*[ⅠⅡⅢⅣ]+[-－.．]?\s*\d*[.．)）]?\s*/, "")
+    .replace(/^[\s　]*[（(]?\d+[）).．]\s*/, "")
+    .trim();
+}
+
+/**
+ * refSlotsを宣言したのに本文にマーカーを書かなかった場合の救済。
+ *
+ * プロンプトで必須と伝えてはいるが、守られないことが実際にあった。
+ * マーカーが1つもないと立論と参考資料の対応が完全に切れ、
+ * 相互リンクもWord出力も成立しなくなるため、文末に補う。
+ */
+export function ensureRefMarkers(text: string, numbers: number[]): string {
+  const missing = numbers.filter((n) => !text.includes(`資料${n}参照】`));
+  if (missing.length === 0) return text;
+
+  const markers = missing.map((n) => `【資料${n}参照】`).join("");
+  // 実物の立論も文末に置いているので、句点の直前に差し込む
+  return /。\s*$/.test(text)
+    ? text.replace(/。\s*$/, `${markers}。`)
+    : `${text}${markers}`;
+}
+
+/** 本文中の【資料{slot}参照】を、いったん仮番号の【資料N参照】に置き換える */
+export function replaceSlotMarkers(
+  text: string,
+  slotToRefId: Map<string, string>,
+  refs: { id: string; number: number }[],
+): string {
+  // slot は "s1" のように数字を含むことがある。
+  // 数字を含まない前提で書くと【資料s2参照】が置換されず、
+  // そのうえ救済処理が【資料2参照】を足して二重表示になる
+  return text.replace(/【([^】]*?)資料([^】]+?)参照】/g, (whole, prefix, slot) => {
+    const refId = slotToRefId.get(String(slot).trim());
+    const ref = refs.find((r) => r.id === refId);
+    return ref ? `【${prefix}資料${ref.number}参照】` : whole;
+  });
+}
+
 export const SECTION_TYPE_LABELS: Record<string, string> = {
   criteria: "評価基準による論証",
   environment: "環境変化型",

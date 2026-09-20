@@ -39,7 +39,18 @@ export const CASE_FORMAT_GUIDE = `
 Ⅲ. 結論 … 以上より、と主張を繰り返す
 
 分量は1〜2頁程度。スピーチ時間に収まる密度にしてください。
-資料が必要な箇所には本文中に【資料{slot}参照】と書き、その slot を refSlots に宣言してください。
+
+【厳守】見出しの書き方
+見出しに番号を付けないでください（「1.」「Ⅱ-1.」「（1）」などを含めない）。
+番号は表示・出力の側で自動的に付きます。見出しに書くと「1. Ⅱ-1. …」のように二重になります。
+  悪い例: "Ⅱ-1. 租税公平主義から見た問題点" / "（1）担税力に即した課税"
+  良い例: "租税公平主義から見た問題点" / "担税力に即した課税"
+
+【厳守】資料参照の書き方
+資料が必要な箇所には、**本文（claim）の中に** 【資料{slot}参照】と実際に書き込んだうえで、
+その slot を refSlots に宣言してください。宣言だけして本文に書かないのは誤りです。
+  例: claim に「…必要経費を控除している【資料s1参照】。」と書き、
+      refSlots に { "slot": "s1", "provesWhat": "…" } を入れる
 `.trim();
 
 export function analysisPrompt(resolution: string): string {
@@ -65,6 +76,9 @@ export function analysisPrompt(resolution: string): string {
 注意:
 - 肯定側と否定側で「異なる評価基準の枠組み」を採ることがあります。それぞれに最も有利な枠組みを選んでください。
   （例: 肯定側=租税公平主義「担税力/公平/中立性」、否定側=税の基本原則「公平/中立/簡素」）
+- **criteria は短い語**にしてください（2〜8文字程度の名詞）。立論の見出しと比較衡量表にそのまま使うためです。
+  悪い例: "婚姻の自由と氏の自己決定権が実質的に保障されているか"
+  良い例: "自己決定権" / "実質的平等" / "権利侵害の有無"
 - categories は全成果物の検索軸になります。4〜8件、互いに重複しない粒度で。
 `.trim();
 }
@@ -108,7 +122,24 @@ ${ctx.approachHint ? `切り口の指定: ${ctx.approachHint}` : ""}
 `.trim();
 }
 
-export function caseBodyPrompt(outlineJson: string, resolution: string): string {
+/**
+ * 争点カテゴリは全成果物の共通軸（§14）。
+ * 一覧を渡さないとLLMが勝手な名前を作り、IDに解決できず結びつきが切れる。
+ * 実際にブロック集のカテゴリが全件空になったため、必ずこれを添える。
+ */
+function categoryInstruction(categories: string[]): string {
+  return `
+【厳守】争点カテゴリ
+categoryNames は次の一覧から**そのままの表記で**選んでください。
+一覧にない名前を作ってはいけません（成果物どうしの結びつきが切れます）。
+${categories.map((c) => `- ${c}`).join("\n")}`.trim();
+}
+
+export function caseBodyPrompt(
+  outlineJson: string,
+  resolution: string,
+  categories: string[],
+): string {
   return `
 ${CASE_FORMAT_GUIDE}
 
@@ -118,6 +149,8 @@ ${CASE_FORMAT_GUIDE}
 
 ${outlineJson}
 
+${categoryInstruction(categories)}
+
 各サブセクションについて:
 - claim: その段落の主張（実際にスピーチで読み上げる文章。です・ます調ではなく論述体で）
 - warrant: なぜそう言えるかの理由づけ
@@ -126,6 +159,8 @@ ${outlineJson}
 - categoryNames: 関係する争点カテゴリ名
 - refSlots: 本文中で【資料{slot}参照】と書いた箇所を宣言する。
             slot は "s1" "s2" … の形。provesWhat には「その資料が証明すべき命題」を書く
+            **claim の文字列の中に【資料{slot}参照】を必ず含めること。**
+            宣言だけして本文に書かないと、立論と参考資料の対応が切れます
 
 出力するJSON:
 {
@@ -152,11 +187,12 @@ export function sourceRequirementPrompt(slotsJson: string): string {
 必要な資料（本文で宣言された slot）:
 ${slotsJson}
 
-出力するJSON:
+出力するJSON（slot は上のリストで渡されたものを**そのままの文字列で**返してください。
+勝手に "s1" のような別の形に変えると、どの資料の情報か分からなくなります）:
 {
   "requirements": [
     {
-      "slot": "s1",
+      "slot": "（上のリストで渡された slot をそのまま）",
       "provesWhat": "この資料が証明する命題（そのまま資料のタイトルになる）",
       "sourceType": "law|precedent|statistic|paper|govt_doc|diet_record|news|book|org_doc|self_made",
       "description": "なぜこの箇所にこの資料が必要かの説明",
@@ -177,6 +213,7 @@ ${slotsJson}
 export function crossExamPrompt(
   opponentCaseText: string,
   direction: "attack" | "defense",
+  categories: string[],
 ): string {
   const role =
     direction === "attack"
@@ -188,8 +225,16 @@ ${role}
 対象の立論:
 ${opponentCaseText}
 
+${categoryInstruction(categories)}
+
 質疑は「想定回答ごとに次の質問が変わる」分岐構造で作ります。
 どう答えられても追及が続くように、各回答に対する次の一手を用意してください。
+
+分量の目安（本番の質疑時間は限られています。網羅より鋭さを優先してください）:
+- 起点となる質問は3〜4個
+- 各質問の想定回答は2個まで
+- 追及は2段まで（起点 → 追及 → 追及）
+- 全体で10ノードを超えないこと
 
 出力するJSON:
 {
@@ -212,7 +257,10 @@ ${opponentCaseText}
 `.trim();
 }
 
-export function rebuttalPrompt(opponentCaseText: string): string {
+export function rebuttalPrompt(
+  opponentCaseText: string,
+  categories: string[],
+): string {
   return `
 相手の立論を「前提・根拠・因果・効果」の4つの攻撃点に分解して、反駁を組み立ててください。
 
@@ -223,6 +271,8 @@ export function rebuttalPrompt(opponentCaseText: string): string {
 
 相手の立論:
 ${opponentCaseText}
+
+${categoryInstruction(categories)}
 
 出力するJSON:
 {
@@ -236,13 +286,20 @@ ${opponentCaseText}
 `.trim();
 }
 
-export function blocksPrompt(rebuttalsJson: string): string {
+export function blocksPrompt(
+  rebuttalsJson: string,
+  categories: string[],
+): string {
   return `
 本番の試合中に引くための「ブロック集」を作ります。
 相手が何か言ってきたとき、争点カテゴリから2タップで返しに辿り着ける形にします。
 
 用意した反駁:
 ${rebuttalsJson}
+
+${categoryInstruction(categories)}
+※ブロックのカテゴリは、本番中に相手の主張を分類して引くための見出しです。
+　必ず1つ以上付けてください。付いていないと本番モードから辿り着けません。
 
 重要: 複数の想定パターンから似た反駁が出ています。
 **同じ趣旨のものは1つのブロックにまとめてください。**

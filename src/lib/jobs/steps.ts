@@ -29,7 +29,12 @@ import type {
   SourceRequirement,
 } from "@/domain/types";
 import { validateVariant, assertNoCycle } from "@/domain/invariants";
-import { renderFullText } from "@/domain/case-format";
+import {
+  ensureRefMarkers,
+  renderFullText,
+  replaceSlotMarkers,
+  stripLeadingNumber,
+} from "@/domain/case-format";
 import { sanitizeSuggestedSourceIds } from "@/domain/source-whitelist";
 import type { LlmUsage } from "@/lib/llm/provider";
 import { getLlmProvider } from "@/lib/llm/anthropic";
@@ -63,14 +68,25 @@ async function loadCategories(projectId: string) {
     .where(eq(issueCategories.projectId, projectId));
 }
 
+/** 突き合わせ用に表記ゆれを吸収する（全角半角・空白・記号） */
+function normalizeName(name: string): string {
+  return name
+    .normalize("NFKC")
+    .replace(/[\s・/／,、]/g, "")
+    .toLowerCase();
+}
+
 /** カテゴリ名 → ID。LLMは名前で返すのでここで解決する */
 async function categoryIdsByName(
   projectId: string,
   names: string[],
 ): Promise<string[]> {
   const rows = await loadCategories(projectId);
-  const byName = new Map(rows.map((r) => [r.name, r.id]));
-  return names.map((n) => byName.get(n)).filter((id): id is string => !!id);
+  const byName = new Map(rows.map((r) => [normalizeName(r.name), r.id]));
+  const ids = names
+    .map((n) => byName.get(normalizeName(n)))
+    .filter((id): id is string => !!id);
+  return [...new Set(ids)];
 }
 
 async function recordAiRevision(
@@ -147,6 +163,11 @@ async function stepCaseOutline(projectId: string): Promise<LlmUsage> {
   if (!analysis) throw new Error("先に論題の分析を終えてください。");
 
   let total: LlmUsage = { inputTokens: 0, outputTokens: 0, model: "" };
+
+  // このステップをやり直すときは作り直しになる。
+  // 消さずに入れると同じ論題の立論が二重に並ぶため、先に消す
+  // （反駁は外部キーで一緒に消える。作り直した立論への反駁は作り直しが要るため妥当）
+  await db.delete(caseVariants).where(eq(caseVariants.projectId, projectId));
 
   for (const side of ["affirmative", "negative"] as Side[]) {
     const framework = analysis.frameworks[side];
@@ -233,7 +254,11 @@ async function stepCaseBody(projectId: string): Promise<LlmUsage> {
 
     const { data, usage } = await getLlmProvider().generateStructured({
       system: P.SYSTEM_BASE,
-      prompt: P.caseBodyPrompt(outlineJson, project.resolution),
+      prompt: P.caseBodyPrompt(
+        outlineJson,
+        project.resolution,
+        (await loadCategories(projectId)).map((c) => c.name),
+      ),
       schema: caseBodyOutputSchema,
       maxTokens: 12000,
     });
@@ -246,7 +271,7 @@ async function stepCaseBody(projectId: string): Promise<LlmUsage> {
     const sections: CaseSection[] = await Promise.all(
       data.sections.map(async (s, si) => ({
         id: variant.debateCase.sections[si]?.id ?? newId("sec"),
-        title: s.title,
+        title: stripLeadingNumber(s.title),
         type: s.type,
         subsections: await Promise.all(
           s.subsections.map(async (sub, ci) => {
@@ -288,11 +313,21 @@ async function stepCaseBody(projectId: string): Promise<LlmUsage> {
               refIds.push(refId);
             }
 
+            const claimText = replaceSlotMarkers(
+              sub.claim,
+              slotToRefId,
+              sourceRefs,
+            );
+            const numbers = refIds
+              .map((id) => sourceRefs.find((r) => r.id === id)?.number)
+              .filter((n): n is number => n !== undefined);
+
             return {
               id: claimId,
               categoryIds: await categoryIdsByName(projectId, sub.categoryNames),
-              title: sub.title,
-              claim: replaceSlotMarkers(sub.claim, slotToRefId, sourceRefs),
+              // 見出しの番号は表示側で付けるので、ここでは落とす
+              title: stripLeadingNumber(sub.title),
+              claim: ensureRefMarkers(claimText, numbers),
               warrant: replaceSlotMarkers(sub.warrant, slotToRefId, sourceRefs),
               sourceRefIds: refIds,
               causalChain: sub.causalChain.map((c) =>
@@ -333,19 +368,6 @@ async function stepCaseBody(projectId: string): Promise<LlmUsage> {
   return total;
 }
 
-/** 本文中の【資料{slot}参照】を、いったん仮番号の【資料N参照】に置き換える */
-function replaceSlotMarkers(
-  text: string,
-  slotToRefId: Map<string, string>,
-  refs: SourceRequirement[],
-): string {
-  return text.replace(/【([^】]*?)資料([^】\d]+?)参照】/g, (whole, prefix, slot) => {
-    const refId = slotToRefId.get(String(slot).trim());
-    const ref = refs.find((r) => r.id === refId);
-    return ref ? `【${prefix}資料${ref.number}参照】` : whole;
-  });
-}
-
 async function stepSourceRequirements(projectId: string): Promise<LlmUsage> {
   const variants = await db
     .select()
@@ -377,11 +399,17 @@ async function stepSourceRequirements(projectId: string): Promise<LlmUsage> {
       schema: sourceRequirementOutputSchema,
     });
 
-    const bySlot = new Map(data.requirements.map((r) => [r.slot, r]));
+    // LLMが slot を勝手に "s1" 等へ変えることがある。
+    // 数字部分だけで突き合わせ、それでも合わなければ並び順で対応づける
+    const digitsOf = (v: string) => v.replace(/\D/g, "");
+    const bySlot = new Map(
+      data.requirements.map((r) => [digitsOf(r.slot) || r.slot, r]),
+    );
     const updatedRefs: SourceRequirement[] = [];
 
-    for (const ref of variant.sourceRefs) {
-      const info = bySlot.get(String(ref.number));
+    for (const [index, ref] of variant.sourceRefs.entries()) {
+      const info =
+        bySlot.get(String(ref.number)) ?? data.requirements[index];
       if (!info) {
         updatedRefs.push(ref);
         continue;
@@ -422,6 +450,7 @@ async function opponentVariants(projectId: string) {
 
 async function stepCrossExam(projectId: string): Promise<LlmUsage> {
   const opponents = await opponentVariants(projectId);
+  const categoryNames = (await loadCategories(projectId)).map((c) => c.name);
   let total: LlmUsage = { inputTokens: 0, outputTokens: 0, model: "" };
 
   for (const opponent of opponents) {
@@ -429,15 +458,23 @@ async function stepCrossExam(projectId: string): Promise<LlmUsage> {
     for (const direction of ["attack", "defense"] as const) {
       const { data, usage } = await getLlmProvider().generateStructured({
         system: P.SYSTEM_BASE,
-        prompt: P.crossExamPrompt(opponent.debateCase.fullText, direction),
+        prompt: P.crossExamPrompt(
+          opponent.debateCase.fullText,
+          direction,
+          categoryNames,
+        ),
         schema: crossExamOutputSchema,
+        // 分岐ツリーはJSONが嵩む。8000だと途中で切れて必ず失敗する
+        maxTokens: 16000,
       });
 
       const idByKey = new Map(data.nodes.map((n) => [n.key, newId("cx")]));
       const nodes: CrossExamNode[] = await Promise.all(
         data.nodes.map(async (n) => ({
           id: idByKey.get(n.key)!,
-          direction: n.direction,
+          // モデルは defense の呼び出しでも "attack" と返すことがある。
+          // どちらの向きで頼んだかは呼び出し側が知っているので、そちらを使う
+          direction,
           targetVariantId: opponent.id,
           categoryIds: await categoryIdsByName(projectId, n.categoryNames),
           question: n.question,
@@ -458,7 +495,7 @@ async function stepCrossExam(projectId: string): Promise<LlmUsage> {
           id: n.id,
           projectId,
           targetVariantId: opponent.id,
-          direction: n.direction,
+          direction,
           targetClaimId: n.targetClaimId,
           question: n.question,
           purpose: n.purpose,
@@ -474,13 +511,16 @@ async function stepCrossExam(projectId: string): Promise<LlmUsage> {
 
 async function stepRebuttal(projectId: string): Promise<LlmUsage> {
   const opponents = await opponentVariants(projectId);
+  const categoryNames = (await loadCategories(projectId)).map((c) => c.name);
   let total: LlmUsage = { inputTokens: 0, outputTokens: 0, model: "" };
 
   for (const opponent of opponents) {
     const { data, usage } = await getLlmProvider().generateStructured({
       system: P.SYSTEM_BASE,
-      prompt: P.rebuttalPrompt(opponent.debateCase.fullText),
+      prompt: P.rebuttalPrompt(opponent.debateCase.fullText, categoryNames),
       schema: rebuttalOutputSchema,
+      // 相手の全主張×4つの攻撃点ぶんを書くので長くなる
+      maxTokens: 16000,
     });
 
     const claimByTitle = new Map(
@@ -522,8 +562,11 @@ async function stepBlocks(projectId: string): Promise<LlmUsage> {
         null,
         2,
       ),
+      (await loadCategories(projectId)).map((c) => c.name),
     ),
     schema: blocksOutputSchema,
+    // 反駁を全件束ねて書き出すため長くなる
+    maxTokens: 16000,
   });
 
   const byArgument = new Map(rows.map((r) => [r.argument, r]));
@@ -532,7 +575,12 @@ async function stepBlocks(projectId: string): Promise<LlmUsage> {
     const linked = b.rebuttalArguments
       .map((a) => byArgument.get(a))
       .filter((r): r is (typeof rows)[number] => !!r);
-    const categoryIds = await categoryIdsByName(projectId, b.categoryNames);
+    let categoryIds = await categoryIdsByName(projectId, b.categoryNames);
+    if (categoryIds.length === 0) {
+      // カテゴリが付かないブロックは本番モードから辿り着けない。
+      // 束ねた反駁のカテゴリを引き継いで、必ずどこかから引ける状態にする
+      categoryIds = [...new Set(linked.flatMap((r) => r.categoryIds))];
+    }
 
     await db.insert(blocks).values({
       id: newId("blk"),
