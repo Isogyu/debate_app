@@ -9,6 +9,8 @@
 
 import { useState } from "react";
 import { SpeechTimer } from "./speech-timer";
+import { Pacemaker } from "./pacemaker";
+import type { DebateCase } from "@/domain/types";
 import {
   DEFAULT_CHARS_PER_MINUTE,
   estimateSpeech,
@@ -27,7 +29,14 @@ const COLORS = {
 
 const RATES = [260, 290, 320, 350, 380];
 
-export function SpeechMeter({ text }: { text: string }) {
+export function SpeechMeter({
+  text,
+  debateCase,
+}: {
+  text: string;
+  /** 渡すと、原稿を見ながら練習できるペースメーカーを出す */
+  debateCase?: DebateCase;
+}) {
   // 読み上げ速度は人によってかなり違う。実際に測って選べるようにする
   const [rate, setRate] = useState(DEFAULT_CHARS_PER_MINUTE);
   const [timerOpen, setTimerOpen] = useState(false);
@@ -90,13 +99,14 @@ export function SpeechMeter({ text }: { text: string }) {
       </p>
 
       {/* 推定と実測は必ずずれる。実際に測る手段を同じ場所に置く */}
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={() => setTimerOpen(!timerOpen)}
           className="min-h-11 rounded border-2 border-[var(--accent)] px-4 text-sm font-bold text-[var(--accent)]"
         >
           {timerOpen ? "タイマーを閉じる" : "実際に読んで測る（タイマー）"}
         </button>
+        {debateCase && <Pacemaker debateCase={debateCase} />}
       </div>
 
       {timerOpen && (

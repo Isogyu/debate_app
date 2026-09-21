@@ -161,7 +161,10 @@ export function CaseView({
       ) : (
         <>
           {/* 時間は超過も余りすぎも減点なので、見ているあいだ常に出す */}
-          <SpeechMeter text={variant.debateCase.fullText} />
+          <SpeechMeter
+            text={variant.debateCase.fullText}
+            debateCase={variant.debateCase}
+          />
 
           {wordPreview ? (
             <WordPreview text={variant.debateCase.fullText} />
