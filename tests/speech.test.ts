@@ -59,10 +59,11 @@ test("実物の立論は5分に収まると判定される", () => {
       est.seconds <= SPEECH_LIMIT_SECONDS,
       `${file} が超過と判定された: ${est.label}（${est.chars}字）`,
     );
-    // 5分の枠をほぼ使い切る長さのはず。短すぎる判定も困る
-    assert.ok(
-      est.ratio > 0.8,
-      `${file} が短すぎる判定: ${est.label}（${est.chars}字）`,
+    // 実物は適正帯に入っているはず。「余りすぎ」と出るなら基準がおかしい
+    assert.equal(
+      est.verdict,
+      "ok",
+      `${file} が適正と判定されない: ${est.label}（${est.chars}字）`,
     );
   }
 });
@@ -73,9 +74,21 @@ test("超過したら超過分を示す", () => {
   assert.match(est.label, /超過/);
 });
 
-test("5分の9割を超えたら注意を促す", () => {
-  assert.equal(estimateSpeech("あ".repeat(1000)).verdict, "ok");
-  assert.equal(estimateSpeech("あ".repeat(1500)).verdict, "near");
+test("30秒以上余る短さは減点対象として扱う", () => {
+  // 審査要項: 「時間オーバーや30秒以上時間が余った場合は減点」
+  // 320字/分なので、4分30秒ぶんは1440字。これ以下は余りすぎ
+  // 境界そのものは秒への丸めがあるので、明確に内外の値で確かめる
+  assert.equal(estimateSpeech("あ".repeat(1000)).verdict, "short");
+  assert.equal(estimateSpeech("あ".repeat(1440)).verdict, "short");
+  assert.equal(estimateSpeech("あ".repeat(1500)).verdict, "ok");
+  assert.equal(estimateSpeech("あ".repeat(1590)).verdict, "ok");
+  assert.equal(estimateSpeech("あ".repeat(1700)).verdict, "over");
+});
+
+test("短い場合は何秒余るかを示す", () => {
+  const est = estimateSpeech("あ".repeat(800));
+  assert.equal(est.verdict, "short");
+  assert.match(est.label, /余る/);
 });
 
 test("時間の表示は分と秒", () => {
@@ -83,12 +96,16 @@ test("時間の表示は分と秒", () => {
   assert.equal(formatDuration(65), "1分05秒");
 });
 
-test("生成への指示に全体と1段落あたりの目安が入る", () => {
+test("生成への指示に上限と下限の両方が入る", () => {
   const guide = speechBudgetGuide(6);
-  assert.match(guide, /1600字以内/);
+  // 上限だけ伝えると、短すぎる立論ができて減点される
+  assert.match(guide, /1440〜1600字/);
+  assert.match(guide, /減点/);
   assert.match(guide, /減点/);
   // 1段落あたりの目安がないと、全体だけ言っても守られない
-  assert.match(guide, /1つあたり\d+字/);
+  assert.match(guide, /1つあたり\d+〜\d+字/);
+  // 速度で帳尻を合わせるのも減点対象だと伝える
+  assert.match(guide, /早口/);
 });
 
 test("括弧だけの資料マーカーも読み上げない", () => {

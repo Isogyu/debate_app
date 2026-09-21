@@ -3,21 +3,30 @@
 /**
  * スピーチタイマー（U13）
  *
- * 5分超過で減点されるため、推定値だけでは足りない。実際に読んで測る。
- * 測った結果から読み上げ速度を割り出し、以後の推定に反映できるようにする。
+ * 審査要項より:
+ *  - 立論5分、質問8分、最終弁論1分で時間厳守
+ *  - 時間オーバーも、30秒以上余るのも減点
+ *  - タイムキーパーは1分前と30秒前に合図する
+ * 本番と同じ合図を練習でも出す。本番で初めて聞くと動揺するため。
+ *
+ * 測った結果から読み上げ速度を割り出し、以後の推定に反映する。
  * 推定と実測は必ずずれるので、そのずれを埋める導線がないと数字を信用できない。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  DEFAULT_CHARS_PER_MINUTE,
-  formatDuration,
-  SPEECH_LIMIT_SECONDS,
-} from "@/domain/speech";
+import { DEFAULT_CHARS_PER_MINUTE, formatDuration } from "@/domain/speech";
 
-/** 残りこの秒数を切ったら色と文言で知らせる */
-const CAUTION_SECONDS = 60;
-const DANGER_SECONDS = 20;
+/** タイムキーパーが合図する残り秒数（審査要項5） */
+const SIGNALS = [60, 30] as const;
+
+/** 種目ごとの持ち時間（審査要項5） */
+export const SPEECH_KINDS = [
+  { key: "case", label: "立論", seconds: 300, hasMinimum: true },
+  { key: "question", label: "質疑", seconds: 480, hasMinimum: false },
+  { key: "closing", label: "最終弁論", seconds: 60, hasMinimum: true },
+] as const;
+
+export type SpeechKind = (typeof SPEECH_KINDS)[number]["key"];
 
 export function SpeechTimer({
   chars,
@@ -28,11 +37,17 @@ export function SpeechTimer({
   /** 測り終わったときに、割り出した速度を親へ返す */
   onMeasured?: (charsPerMinute: number) => void;
 }) {
+  const [kindKey, setKindKey] = useState<SpeechKind>("case");
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
   const [measured, setMeasured] = useState<number | null>(null);
+  const [signal, setSignal] = useState<number | null>(null);
   const startedAt = useRef<number | null>(null);
   const baseElapsed = useRef(0);
+  const firedSignals = useRef<Set<number>>(new Set());
+
+  const kind = SPEECH_KINDS.find((k) => k.key === kindKey)!;
+  const limit = kind.seconds;
 
   useEffect(() => {
     if (!running) return;
@@ -40,11 +55,22 @@ export function SpeechTimer({
     const tick = () => {
       const started = startedAt.current;
       if (started === null) return;
-      setElapsed(baseElapsed.current + (Date.now() - started) / 1000);
+      const next = baseElapsed.current + (Date.now() - started) / 1000;
+      setElapsed(next);
+
+      // 本番と同じタイミングで合図を出す
+      const left = limit - next;
+      for (const at of SIGNALS) {
+        if (left <= at && left > at - 1 && !firedSignals.current.has(at)) {
+          firedSignals.current.add(at);
+          setSignal(at);
+          setTimeout(() => setSignal(null), 3000);
+        }
+      }
     };
     const id = setInterval(tick, 100);
     return () => clearInterval(id);
-  }, [running]);
+  }, [running, limit]);
 
   const start = () => {
     startedAt.current = Date.now();
@@ -71,23 +97,49 @@ export function SpeechTimer({
   const reset = () => {
     baseElapsed.current = 0;
     startedAt.current = null;
+    firedSignals.current = new Set();
     setElapsed(0);
     setRunning(false);
     setMeasured(null);
+    setSignal(null);
   };
 
-  const remaining = SPEECH_LIMIT_SECONDS - elapsed;
+  const remaining = limit - elapsed;
   const over = remaining < 0;
+  // 30秒以上余らせるのも減点なので、そこも赤にする（立論・最終弁論のみ）
+  const tooShort = kind.hasMinimum && elapsed > 0 && !running && remaining >= 30;
   const color = over
     ? "var(--neg)"
-    : remaining <= DANGER_SECONDS
-      ? "var(--neg)"
-      : remaining <= CAUTION_SECONDS
-        ? "#b45309"
-        : "var(--aff)";
+    : tooShort
+      ? "#b45309"
+      : remaining <= 30
+        ? "var(--aff)"
+        : remaining <= 60
+          ? "#b45309"
+          : "var(--muted)";
 
   return (
     <section className="rounded border-2 p-4" style={{ borderColor: color }}>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {SPEECH_KINDS.map((k) => (
+          <button
+            key={k.key}
+            onClick={() => {
+              setKindKey(k.key);
+              reset();
+            }}
+            disabled={running}
+            className={`min-h-11 rounded px-4 text-sm font-bold disabled:opacity-40 ${
+              kindKey === k.key
+                ? "bg-[var(--accent)] text-white"
+                : "border border-[var(--line)]"
+            }`}
+          >
+            {k.label} {Math.round(k.seconds / 60)}分
+          </button>
+        ))}
+      </div>
+
       <div className="mb-1 text-sm text-[var(--muted)]">
         {over ? "超過時間" : "残り時間"}
       </div>
@@ -105,7 +157,7 @@ export function SpeechTimer({
         <div
           className="h-full"
           style={{
-            width: `${Math.min((elapsed / SPEECH_LIMIT_SECONDS) * 100, 100)}%`,
+            width: `${Math.min((elapsed / limit) * 100, 100)}%`,
             background: color,
           }}
         />
@@ -143,10 +195,32 @@ export function SpeechTimer({
         </button>
       </div>
 
+      {/* 本番のタイムキーパーと同じ合図。練習で慣れておく */}
+      {signal !== null && (
+        <p
+          role="status"
+          className="mt-3 rounded bg-[var(--neg)] px-3 py-2 text-center font-bold text-white"
+        >
+          残り{signal}秒
+        </p>
+      )}
+
       <p className="mt-3 text-sm text-[var(--muted)]">
         経過 {formatDuration(Math.floor(elapsed))} / 持ち時間{" "}
-        {formatDuration(SPEECH_LIMIT_SECONDS)}
+        {formatDuration(limit)}
+        {kind.hasMinimum && (
+          <span className="ml-2">
+            （30秒以上余ると減点。適正は残り0〜30秒で読み終わり）
+          </span>
+        )}
       </p>
+
+      {tooShort && (
+        <p className="mt-2 text-sm" style={{ color }}>
+          <b>{formatDuration(Math.floor(remaining))}余りました。</b>
+          30秒以上余ると減点されます。分量を足してください。
+        </p>
+      )}
 
       {measured !== null && (
         <div className="mt-3 rounded bg-[var(--line)]/30 p-3 text-sm">
@@ -166,7 +240,8 @@ export function SpeechTimer({
 
       {over && (
         <p className="mt-3 text-sm" style={{ color }}>
-          <b>5分を超えました。</b>このままだと減点されます。論点を1つ落としてください。
+          <b>{kind.label}の持ち時間を超えました。</b>
+          減点されます。{kind.key === "case" ? "論点を1つ落としてください。" : ""}
         </p>
       )}
     </section>

@@ -13,13 +13,15 @@ import {
   DEFAULT_CHARS_PER_MINUTE,
   estimateSpeech,
   formatDuration,
+  minAcceptableChars,
+  MIN_ACCEPTABLE_SECONDS,
   SPEECH_LIMIT_SECONDS,
   speechBudgetChars,
 } from "@/domain/speech";
 
 const COLORS = {
   ok: "var(--aff)",
-  near: "#b45309",
+  short: "#b45309",
   over: "var(--neg)",
 } as const;
 
@@ -32,6 +34,7 @@ export function SpeechMeter({ text }: { text: string }) {
   const est = estimateSpeech(text, rate);
   const color = COLORS[est.verdict];
   const budget = speechBudgetChars(rate);
+  const minChars = minAcceptableChars(rate);
 
   return (
     <section
@@ -43,7 +46,8 @@ export function SpeechMeter({ text }: { text: string }) {
           読み上げ {est.label}
         </span>
         <span className="text-sm text-[var(--muted)]">
-          {est.chars}字 / 目安 {budget}字（持ち時間{" "}
+          {est.chars}字 / 適正 {minChars}〜{budget}字（
+          {formatDuration(MIN_ACCEPTABLE_SECONDS)}〜
           {formatDuration(SPEECH_LIMIT_SECONDS)}）
         </span>
         <label className="ml-auto text-sm">
@@ -63,16 +67,27 @@ export function SpeechMeter({ text }: { text: string }) {
         </label>
       </div>
 
-      {/* 残り時間を視覚化する。数字だけだと切迫感が伝わらない */}
-      <div className="mt-2 h-2 w-full overflow-hidden rounded bg-[var(--line)]">
+      {/* 適正帯（4分30秒〜5分）を帯の上に示す。
+          上限だけ見ていると「余りすぎ」の減点に気づけない */}
+      <div className="relative mt-2 h-3 w-full overflow-hidden rounded bg-[var(--line)]">
         <div
-          className="h-full transition-[width]"
+          className="absolute inset-y-0 bg-[var(--aff)]/25"
+          style={{
+            left: `${(MIN_ACCEPTABLE_SECONDS / SPEECH_LIMIT_SECONDS) * 100}%`,
+            right: 0,
+          }}
+        />
+        <div
+          className="relative h-full transition-[width]"
           style={{
             width: `${Math.min(est.ratio * 100, 100)}%`,
             background: color,
           }}
         />
       </div>
+      <p className="mt-1 text-xs text-[var(--muted)]">
+        緑の帯が適正です。超過も、30秒以上余るのも減点対象です。
+      </p>
 
       {/* 推定と実測は必ずずれる。実際に測る手段を同じ場所に置く */}
       <div className="mt-3">
@@ -106,9 +121,11 @@ export function SpeechMeter({ text }: { text: string }) {
           説明を削るのではなく、<b>論点そのものを1つ落とす</b>方が確実に縮みます。
         </p>
       )}
-      {est.verdict === "near" && (
+      {est.verdict === "short" && (
         <p className="mt-2 text-sm" style={{ color }}>
-          持ち時間の9割を超えています。本番では緊張で遅くなるので、余裕を残してください。
+          <b>30秒以上余ります。これも減点対象です。</b>
+          早く読んで調整するのではなく、論証を一段深めて分量を足してください
+          （早口・遅すぎも減点されます）。
         </p>
       )}
     </section>
