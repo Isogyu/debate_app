@@ -77,6 +77,21 @@ export default async function ExportPage({
               />
             )}
 
+            <p
+              className="mb-4 rounded border p-3 text-sm"
+              style={{
+                borderColor: data.speech.over ? "var(--neg)" : "var(--line)",
+              }}
+            >
+              読み上げ時間の目安: <b>{data.speech.label}</b>（{data.speech.chars}字）
+              {data.speech.over && (
+                <span className="mt-1 block text-[var(--neg)]">
+                  5分を超えています。<b>このまま読むと減点されます。</b>
+                  立論画面で論点を減らしてください。
+                </span>
+              )}
+            </p>
+
             {data.warnings.length > 0 && (
               <p className="mb-4 rounded border-2 border-[var(--neg)] p-3 text-sm">
                 {data.warnings.join(" / ")}

@@ -258,6 +258,11 @@ async function stepCaseBody(projectId: string): Promise<LlmUsage> {
         outlineJson,
         project.resolution,
         (await loadCategories(projectId)).map((c) => c.name),
+        // 字数の目安は小見出しの数で割って出すので、実際の数を渡す
+        variant.debateCase.sections.reduce(
+          (n, s) => n + s.subsections.length,
+          0,
+        ),
       ),
       schema: caseBodyOutputSchema,
       maxTokens: 12000,

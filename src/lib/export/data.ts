@@ -18,6 +18,7 @@ import {
 } from "@/db/schema";
 import type { DebateCase, LawRef, Side } from "@/domain/types";
 import { assertRefNumbersConsistent, InvariantError } from "@/domain/invariants";
+import { estimateSpeech } from "@/domain/speech";
 import type { CaseVariant } from "@/domain/types";
 
 export interface ExportSourceEntry {
@@ -50,8 +51,10 @@ export interface ExportData {
   blocks: ExportBlockEntry[];
   /** 全資料が人の確認済みか。未確認があればエクスポートにも明記する */
   allVerified: boolean;
-  /** 番号の不整合。空でなければ画面で警告する */
+  /** 番号の不整合や時間超過。空でなければ画面で警告する */
   warnings: string[];
+  /** 読み上げ時間の見積もり。5分超過は減点対象 */
+  speech: { chars: number; label: string; over: boolean };
 }
 
 export const SIDE_LABELS: Record<Side, string> = {
@@ -93,6 +96,14 @@ export async function buildExportData(
   } catch (err) {
     if (err instanceof InvariantError) warnings.push(err.message);
     else throw err;
+  }
+
+  // 5分を超える立論は、内容が良くても減点される。出力前に知らせる
+  const speech = estimateSpeech(variant.debateCase.fullText);
+  if (speech.verdict === "over") {
+    warnings.push(
+      `読み上げが${speech.label}です。5分を超えると減点されるため、論点を削ってください。`,
+    );
   }
 
   const materialById = new Map(materials.map((m) => [m.id, m]));
@@ -145,6 +156,11 @@ export async function buildExportData(
       })),
     allVerified:
       sources.length > 0 && sources.every((s) => s.status === "verified"),
+    speech: {
+      chars: speech.chars,
+      label: speech.label,
+      over: speech.verdict === "over",
+    },
     warnings,
   };
 }

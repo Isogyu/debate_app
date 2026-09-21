@@ -8,6 +8,7 @@
  */
 
 import { whitelistForPrompt } from "@/domain/source-whitelist";
+import { speechBudgetGuide } from "@/domain/speech";
 
 const NEVER_FABRICATE = `
 【厳守】捏造の禁止
@@ -106,6 +107,12 @@ ${ctx.approachHint ? `切り口の指定: ${ctx.approachHint}` : ""}
 
 この条件で立論の骨子だけを出力してください（本文はまだ書かない）。
 
+【厳守】分量の制約から逆算すること
+立論は読み上げ5分で、超過すると減点されます。全体で1,600字以内です。
+そのため**小見出しは全体で4〜6個まで**にしてください。
+7個以上にすると、1つあたり200字を切って論証が成立しません。
+論点は絞り込み、弱いものは捨ててください。
+
 出力するJSON:
 {
   "side": "${ctx.side}",
@@ -139,6 +146,7 @@ export function caseBodyPrompt(
   outlineJson: string,
   resolution: string,
   categories: string[],
+  subsectionCount: number,
 ): string {
   return `
 ${CASE_FORMAT_GUIDE}
@@ -149,6 +157,8 @@ ${CASE_FORMAT_GUIDE}
 
 ${outlineJson}
 
+${speechBudgetGuide(subsectionCount)}
+
 ${categoryInstruction(categories)}
 
 各サブセクションについて:
@@ -156,6 +166,10 @@ ${categoryInstruction(categories)}
 - warrant: なぜそう言えるかの理由づけ
 - causalChain: 因果の連鎖を段階ごとに配列で（飛躍させず、一段ずつ）
 - impact: それが論題の判断にどう効くか
+
+※ claim・warrant・impact は**読み上げる原稿そのもの**です。3つ合わせて
+  上の目安の字数に収めてください。causalChain は読み上げず、
+  準備用のメモなので字数に数えません
 - categoryNames: 関係する争点カテゴリ名
 - refSlots: 本文中で【資料{slot}参照】と書いた箇所を宣言する。
             slot は "s1" "s2" … の形。provesWhat には「その資料が証明すべき命題」を書く
@@ -371,6 +385,11 @@ export function regenerateClaimPrompt(ctx: RegenerateClaimContext): string {
 
 現在の本文:
 ${ctx.current}
+
+【厳守】長さ
+立論は読み上げ5分で、超過すると減点されます。
+書き直したあとの claim・warrant・impact の合計を、**現在の本文と同じかそれ以下**に
+してください。詳しくしようとして長くしないこと。
 
 【厳守】資料参照について
 この段落で使ってよいマーカーは次のものだけです: ${refs}

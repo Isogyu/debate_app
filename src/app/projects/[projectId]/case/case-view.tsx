@@ -12,6 +12,7 @@ import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { splitRefs, SECTION_TYPE_LABELS } from "@/domain/case-format";
 import { useOnline } from "@/components/pwa";
+import { SpeechMeter } from "@/components/speech-meter";
 import type { Claim, DebateCase, Side } from "@/domain/types";
 import {
   adoptVariant,
@@ -118,6 +119,9 @@ export function CaseView({
           {wordPreview ? "構造表示にする" : "Wordプレビュー"}
         </button>
       </div>
+
+      {/* 5分を超えると減点されるので、見ているあいだ常に出す */}
+      <SpeechMeter text={variant.debateCase.fullText} />
 
       {wordPreview ? (
         <WordPreview text={variant.debateCase.fullText} />

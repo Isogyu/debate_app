@@ -39,6 +39,9 @@ export default async function PrintPage({
           この画面を印刷すると、そのままPDFとして保存できます。
           印刷ダイアログの「送信先」で<b>「PDFに保存」</b>を選んでください。
         </p>
+        <p className="mb-3 text-sm">
+          読み上げ時間の目安: <b>{data.speech.label}</b>（{data.speech.chars}字）
+        </p>
         {data.warnings.length > 0 && (
           <p className="mb-3 rounded border-2 border-[var(--neg)] p-2 text-sm">
             {data.warnings.join(" / ")}
