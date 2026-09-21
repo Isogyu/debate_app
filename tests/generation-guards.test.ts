@@ -132,3 +132,29 @@ test("未知の slot は書き換えずそのまま残す", async () => {
   const text = "根拠がある【資料zzz参照】。";
   assert.equal(replaceSlotMarkers(text, new Map(), []), text);
 });
+
+// ── 情報源の検索URL ────────────────────────────────────
+// トップページに飛ばすと検索語を打ち直させることになる。
+// ただし、URLに検索語を載せても効かないサイトがある（国会会議録など）。
+// 効くことを実際に確認したものにだけ searchUrl を設定している。
+
+test("CiNiiとe-Statは検索語入りのURLになる", async () => {
+  const { searchUrlFor } = await import("../src/domain/source-whitelist.ts");
+  const cinii = searchUrlFor("cinii", ["夫婦別氏", "人格権"]);
+  assert.match(cinii, /^https:\/\/cir\.nii\.ac\.jp\/all\?q=/);
+  assert.ok(cinii.includes(encodeURIComponent("夫婦別氏 人格権")));
+
+  const estat = searchUrlFor("estat", ["就業構造基本調査"]);
+  assert.match(estat, /^https:\/\/www\.e-stat\.go\.jp\/stat-search\?/);
+});
+
+test("検索語が効かない情報源はトップページのまま", async () => {
+  const { searchUrlFor } = await import("../src/domain/source-whitelist.ts");
+  // 国会会議録はURLに検索語を載せても全件が出てしまう
+  assert.equal(searchUrlFor("kokkai_giji", ["所得税法56条"]), "https://kokkai.ndl.go.jp/");
+});
+
+test("検索語がなければトップページを返す", async () => {
+  const { searchUrlFor } = await import("../src/domain/source-whitelist.ts");
+  assert.equal(searchUrlFor("cinii", []), "https://cir.nii.ac.jp/");
+});

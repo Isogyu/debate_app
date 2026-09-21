@@ -10,7 +10,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { caseVariants, issueCategories, projects, sourceMaterials } from "@/db/schema";
 import { Breadcrumb, Header } from "@/components/chrome";
-import { getSuggestedSource } from "@/domain/source-whitelist";
+import { getSuggestedSource, searchUrlFor } from "@/domain/source-whitelist";
 import { SourcesView, type SourceItem } from "./sources-view";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +73,14 @@ export default async function SourcesPage({
         suggestedSources: ref.suggestedSourceIds
           .map((id) => getSuggestedSource(id))
           .filter((s) => !!s)
-          .map((s) => ({ id: s.id, label: s.label, url: s.url, hint: s.hint })),
+          .map((s) => ({
+            id: s.id,
+            label: s.label,
+            // 検索語を入れた状態で開く。打ち直させない
+            url: searchUrlFor(s.id, ref.searchKeywords),
+            searchable: !!s.searchUrl && ref.searchKeywords.length > 0,
+            hint: s.hint,
+          })),
         categoryIds: ref.categoryIds,
         usedIn: ref.supportsClaimIds
           .map((id) => ({ claimId: id, title: claimTitleById.get(id) ?? "" }))

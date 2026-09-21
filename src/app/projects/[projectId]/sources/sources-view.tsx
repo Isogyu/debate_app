@@ -26,7 +26,14 @@ export interface SourceItem {
   modificationNote?: string;
   description: string;
   searchKeywords: string[];
-  suggestedSources: { id: string; label: string; url: string; hint: string }[];
+  suggestedSources: {
+    id: string;
+    label: string;
+    url: string;
+    /** 検索語入りで開けるか。開けるなら見た目で分かるようにする */
+    searchable?: boolean;
+    hint: string;
+  }[];
   categoryIds: string[];
   /** どのClaimを支えるか。立論への逆リンク（§14 相互リンク） */
   usedIn: { claimId: string; title: string }[];
@@ -279,10 +286,10 @@ function SourceCard({
                 title={s.hint}
                 // 読み上げ名に情報源の名前そのものを含める。title だけだと
                 // 画面に見えている名前と読み上げが食い違う
-                aria-label={`${s.label}（別タブで開く）${s.hint}`}
+                aria-label={`${s.label}${s.searchable ? "（検索語を入れて別タブで開く）" : "（別タブで開く）"}${s.hint}`}
                 className="rounded border border-[var(--accent)] px-2 py-0.5 text-[var(--accent)]"
               >
-                {s.label} ↗
+                {s.label}{s.searchable ? " で検索" : ""} ↗
               </a>
             ) : (
               <span key={s.id} title={s.hint} className="rounded border border-[var(--line)] px-2 py-0.5">

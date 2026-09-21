@@ -12,6 +12,17 @@ export interface SuggestedSource {
   label: string;
   /** 資料要件画面から直接飛べるようにする */
   url: string;
+  /**
+   * 検索語を入れた状態で開けるURLの作り方。
+   *
+   * トップページへ飛ばすと、ゼミ生が検索語を打ち直すことになる。
+   * ここが埋まっている情報源は、ワンタップで結果一覧に着く。
+   *
+   * **実際にブラウザで開いて結果が絞り込まれることを確認したものだけ**に
+   * 設定する。国会会議録のように、URLに検索語を載せても効かない
+   * （全件が出る）サイトがあり、壊れたリンクはトップページより悪い。
+   */
+  searchUrl?: (keywords: string[]) => string;
   kind: "law" | "diet" | "statistic" | "academic" | "book" | "govt" | "other";
   /** この情報源が向いている資料種別 */
   fits: SourceType[];
@@ -55,6 +66,9 @@ export const SUGGESTED_SOURCES: SuggestedSource[] = [
     id: "estat",
     label: "e-Stat 政府統計の総合窓口",
     url: "https://www.e-stat.go.jp/",
+    // 確認済み: 「就業構造基本調査」で該当統計に絞り込まれた
+    searchUrl: (kw) =>
+      `https://www.e-stat.go.jp/stat-search?page=1&query=${encodeURIComponent(kw.join(" "))}`,
     kind: "statistic",
     fits: ["statistic"],
     hint: "就業構造基本調査など。年次と表番号を必ず控える。",
@@ -79,6 +93,9 @@ export const SUGGESTED_SOURCES: SuggestedSource[] = [
     id: "cinii",
     label: "CiNii Research",
     url: "https://cir.nii.ac.jp/",
+    // 確認済み: 「夫婦別氏 人格権」で関連する判例研究・論文が出た
+    searchUrl: (kw) =>
+      `https://cir.nii.ac.jp/all?q=${encodeURIComponent(kw.join(" "))}`,
     kind: "academic",
     fits: ["paper"],
     hint: "論文の所在確認。本文はJ-STAGEや機関リポジトリへ。",
@@ -129,6 +146,17 @@ const BY_ID = new Map(SUGGESTED_SOURCES.map((s) => [s.id, s]));
 
 export function getSuggestedSource(id: string): SuggestedSource | undefined {
   return BY_ID.get(id);
+}
+
+/**
+ * 検索語を入れた状態のURL。作り方が分からない情報源はトップページを返す。
+ * 検索語が空のときもトップページでよい
+ */
+export function searchUrlFor(id: string, keywords: string[]): string {
+  const source = BY_ID.get(id);
+  if (!source) return "";
+  if (!source.searchUrl || keywords.length === 0) return source.url;
+  return source.searchUrl(keywords);
 }
 
 /** LLMが返したIDのうち、ホワイトリストにないものは捨てる */
