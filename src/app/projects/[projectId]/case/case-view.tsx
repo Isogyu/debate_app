@@ -11,6 +11,7 @@
 import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { splitRefs, SECTION_TYPE_LABELS } from "@/domain/case-format";
+import { useOnline } from "@/components/pwa";
 import type { Claim, DebateCase, Side } from "@/domain/types";
 import {
   adoptVariant,
@@ -201,6 +202,7 @@ function FrameEditor({
     {},
   );
   const [editing, setEditing] = useState(false);
+  const online = useOnline();
 
   // 保存できたら編集フォームを閉じる。開いたままだと保存されたか分からない
   useEffect(() => {
@@ -215,7 +217,9 @@ function FrameEditor({
             <h2 className="text-lg font-bold">Ⅰ. 主張</h2>
             <button
               onClick={() => setEditing(true)}
-              className="rounded border border-[var(--line)] px-3 py-1 text-sm"
+              disabled={!online}
+              title={online ? undefined : "オフラインでは編集できません"}
+              className="rounded border border-[var(--line)] px-3 py-1 text-sm disabled:opacity-40"
             >
               編集
             </button>
@@ -302,6 +306,8 @@ function ClaimCard({
     ActionState,
     FormData
   >(regenerateClaim, {});
+
+  const online = useOnline();
 
   useEffect(() => {
     if (saveState.ok) setEditing(false);
@@ -431,7 +437,9 @@ function ClaimCard({
       <div className="mt-3 flex justify-end gap-2">
         <button
           onClick={() => setEditing(true)}
-          className="rounded border border-[var(--line)] px-3 py-1 text-sm"
+          disabled={!online}
+          title={online ? undefined : "オフラインでは編集できません"}
+          className="rounded border border-[var(--line)] px-3 py-1 text-sm disabled:opacity-40"
         >
           編集
         </button>
@@ -440,8 +448,9 @@ function ClaimCard({
           <input type="hidden" name="claimId" value={claim.id} />
           <button
             type="submit"
-            disabled={regenerating}
-            className="rounded border border-[var(--line)] px-3 py-1 text-sm disabled:opacity-60"
+            disabled={regenerating || !online}
+            title={online ? undefined : "再生成には電波が必要です"}
+            className="rounded border border-[var(--line)] px-3 py-1 text-sm disabled:opacity-40"
           >
             {regenerating ? "再生成中…" : "この部分を再生成"}
           </button>

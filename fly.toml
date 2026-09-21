@@ -1,0 +1,35 @@
+# Fly.io へのデプロイ設定
+#
+# SQLiteをボリュームに置くため、マシンは1台だけで動かす。
+# 複数台に増やすとDBファイルが分かれて別々のデータになるので増やさないこと。
+
+app = "debate-app"
+primary_region = "nrt"   # 東京
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  DEBATE_DATA_DIR = "/app/data"
+  NODE_ENV = "production"
+
+# データの実体。これを外すとデプロイのたびに全部消える
+[[mounts]]
+  source = "debate_data"
+  destination = "/app/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true          # PWAはHTTPSが必須
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0    # 使っていない時間は止めて無料枠に収める
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 40
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

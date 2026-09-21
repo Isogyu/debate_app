@@ -11,6 +11,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { saveMaterial, verifyMaterial, type ActionState } from "./actions";
 import { Term } from "@/components/chrome";
+import { useOnline } from "@/components/pwa";
 
 export interface SourceItem {
   refId: string;
@@ -197,6 +198,7 @@ function SourceCard({
     FormData
   >(verifyMaterial, {});
   const [modified, setModified] = useState(item.isModified);
+  const online = useOnline();
 
   // 保存できたら登録フォームを閉じる
   useEffect(() => {
@@ -317,7 +319,9 @@ function SourceCard({
       <div className="mt-3 flex flex-wrap justify-end gap-2">
         <button
           onClick={() => setOpen(!open)}
-          className="rounded border border-[var(--line)] px-3 py-1 text-sm"
+          disabled={!online}
+          title={online ? undefined : "オフラインでは登録できません"}
+          className="rounded border border-[var(--line)] px-3 py-1 text-sm disabled:opacity-40"
         >
           {open ? "閉じる" : item.citation ? "出典を編集" : "出典・引用文を登録する"}
         </button>

@@ -104,6 +104,15 @@ export default async function DashboardPage({
           </div>
         )}
 
+        {/* 練習当日に電波がないことを前提に、準備を促す（REQUIREMENTS §12） */}
+        <p className="mb-4 rounded border border-[var(--line)] p-3 text-sm text-[var(--muted)]">
+          最終更新: {project.updatedAt.slice(0, 16).replace("T", " ")}
+          <span className="mt-1 block">
+            練習や模擬戦の前に、電波のある場所で下のカードを一度ずつ開いておくと、
+            オフラインでも閲覧と質疑練習ができます。
+          </span>
+        </p>
+
         <div className="grid gap-4 sm:grid-cols-3">
           <Card
             title="立論"
