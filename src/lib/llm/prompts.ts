@@ -386,3 +386,135 @@ ${ctx.current}
 }
 `.trim();
 }
+
+// ── 質疑シミュレーター（U9 / DESIGN §11） ──────────────
+
+export interface SimulatorContext {
+  resolution: string;
+  /** AIが演じる側 */
+  aiSide: "affirmative" | "negative";
+  /** AIが守る（または攻める根拠にする）立論 */
+  caseText: string;
+  mode: "attack" | "defense";
+}
+
+/**
+ * AIに一貫した立場を保たせる。
+ * 本番の相手は自分の立論から外れた譲歩をしないので、
+ * 簡単に折れる相手だと練習にならない。
+ */
+export function simulatorSystem(ctx: SimulatorContext): string {
+  const side = ctx.aiSide === "affirmative" ? "肯定側" : "否定側";
+  const role =
+    ctx.mode === "attack"
+      ? `あなたは${side}のディベーターです。相手（練習者）からの質疑に答えます。`
+      : `あなたは${side}のディベーターです。相手（練習者）の立論に対して質疑を行います。`;
+
+  return `
+${role}
+
+論題: ${ctx.resolution}
+
+あなたが立脚する立論:
+${ctx.caseText}
+
+【守ること】
+- 上の立論から外れないこと。自分の立場を簡単に捨てない
+- 1回の発言は2〜3文まで。本番の質疑は短いやり取りの積み重ねです
+- 答えに詰まる場面では、本番で実際に起きるように、話をそらしたり
+  条件を付けて限定したりして粘ること。すぐに負けを認めないこと
+- ただし明らかに破綻した主張は無理に守らず、争点を移すこと
+- 練習相手として振る舞い、解説や助言はしないこと（それは最後のフィードバックで行う）
+${
+  ctx.mode === "defense"
+    ? "- 質問は一度に1つだけ。相手の答えを受けてから次を出すこと"
+    : "- 聞かれたことに答えること。質問に質問で返さないこと"
+}
+
+出力は次のJSONのみ:
+{ "reply": "あなたの発言" }
+`.trim();
+}
+
+/** defenseモードの最初の一手。練習者に答えさせるところから始める */
+export function simulatorOpeningPrompt(userCaseText: string): string {
+  return `
+相手（練習者）の立論は次のとおりです。
+
+${userCaseText}
+
+この立論の弱点を突く質疑を始めてください。最初の質問を1つだけ出してください。
+いきなり核心を突かず、前提を確認するところから入ると本番に近くなります。
+
+出力は次のJSONのみ:
+{ "reply": "最初の質問" }
+`.trim();
+}
+
+export function simulatorReplyPrompt(
+  history: { speaker: "user" | "ai"; text: string }[],
+  userText: string,
+): string {
+  const transcript = history
+    .map((t) => `${t.speaker === "user" ? "相手" : "あなた"}: ${t.text}`)
+    .join("\n");
+
+  return `
+これまでのやり取り:
+${transcript || "（まだありません）"}
+
+相手の発言: ${userText}
+
+これに応答してください。
+
+出力は次のJSONのみ:
+{ "reply": "あなたの発言" }
+`.trim();
+}
+
+/**
+ * 終了後のフィードバック。
+ * 練習は続けてもらうことが第一なので、必ずよかった点から入る。
+ */
+export function simulatorFeedbackPrompt(
+  mode: "attack" | "defense",
+  transcript: string,
+): string {
+  const focus =
+    mode === "attack"
+      ? `評価の観点（質問する側）:
+- 質問の狙いが明確だったか。何を認めさせようとしたかが伝わるか
+- 相手の逃げを許さず追及できたか。同じ質問を繰り返していないか
+- 答えを引き出したあと、それを自分の主張に結びつけられたか
+- 1つの質問が長すぎないか（本番では時間を失う）`
+      : `評価の観点（答える側）:
+- 自分の立論と矛盾しない答えができていたか
+- 墓穴を掘る譲歩をしていないか
+- 答えられない点をごまかさず、争点を移せていたか
+- 答えが長すぎて時間を浪費していないか`;
+
+  return `
+次は政策ディベートの質疑練習の記録です。練習者の${
+    mode === "attack" ? "質問" : "回答"
+  }を講評してください。
+
+${focus}
+
+記録:
+${transcript}
+
+講評の方針:
+- 必ず「よかった点」から書くこと。練習を続けてもらうことが第一です
+- 指摘は具体的に。どの発言のどこが問題かを引用して示すこと
+- suggestions には、実際に使える言い換えの例文を入れること
+  （「もっと鋭く」のような抽象的な助言は書かない）
+
+出力は次のJSONのみ:
+{
+  "strengths": ["よかった点"],
+  "weaknesses": ["次に直すとよい点"],
+  "suggestions": ["こう言い換えるとよい、という具体例"],
+  "summary": "全体の講評を2〜3文で"
+}
+`.trim();
+}

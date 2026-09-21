@@ -19,6 +19,42 @@ export const DEFAULT_MODEL = process.env.DEBATE_MODEL ?? "claude-sonnet-5";
 /** 出力の既定上限。切れると必ずJSONが壊れるので余裕を持たせる */
 export const DEFAULT_MAX_TOKENS = 12000;
 
+/**
+ * APIの失敗を、ゼミ生が読んで意味の分かる日本語にする。
+ * 生のエラーには内部情報が混じるので、そのまま見せない（§6.3 エラー設計）。
+ */
+function translateApiError(err: unknown): Error {
+  if (!(err instanceof Anthropic.APIError)) {
+    return new Error(
+      "AIに接続できませんでした。通信の状況を確認して、もう一度お試しください。",
+    );
+  }
+
+  switch (err.status) {
+    case 401:
+    case 403:
+      // やり直しても無駄なので設定エラーとして扱い、その場で諦める
+      return new LlmConfigError(
+        "APIキーが正しくないか、利用できない状態です。管理者に連絡してください。",
+      );
+    case 429:
+      return new Error(
+        "AIへの問い合わせが混み合っています。少し待ってからもう一度お試しください。",
+      );
+    case 400:
+      return new Error(
+        "AIへの依頼内容に問題がありました。管理者に連絡してください。",
+      );
+    default:
+      if (err.status && err.status >= 500) {
+        return new Error(
+          "AI側で問題が起きています。時間をおいてもう一度お試しください。",
+        );
+      }
+      return new Error("AIへの問い合わせに失敗しました。もう一度お試しください。");
+  }
+}
+
 let client: Anthropic | null = null;
 
 function getClient(): Anthropic {
@@ -47,13 +83,21 @@ export class AnthropicProvider implements LlmProvider {
 
   async generateStructured<T>(req: StructuredRequest<T>): Promise<LlmResult<T>> {
     const model = req.model ?? DEFAULT_MODEL;
-    const response = await getClient().messages.create({
-      model,
-      // 日本語の構造化出力は嵩む。8000だと反駁・質疑が途中で切れた
-      max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-      system: `${req.system}\n\n出力は説明文を付けず、JSONオブジェクトのみを返してください。`,
-      messages: [{ role: "user", content: req.prompt }],
-    });
+
+    let response: Anthropic.Message;
+    try {
+      response = await getClient().messages.create({
+        model,
+        // 日本語の構造化出力は嵩む。8000だと反駁・質疑が途中で切れた
+        max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+        system: `${req.system}\n\n出力は説明文を付けず、JSONオブジェクトのみを返してください。`,
+        messages: [{ role: "user", content: req.prompt }],
+      });
+    } catch (err) {
+      // SDKの例外はJSONの生文字列をmessageに持つ。そのまま画面に出すと
+      // 「401 {"type":"error"...}」という表示になるので日本語に置き換える
+      throw translateApiError(err);
+    }
 
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")

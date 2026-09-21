@@ -19,6 +19,8 @@ import type {
   CrossExamBranch,
   DebateCase,
   GenerationStepState,
+  PracticeFeedback,
+  PracticeTurn,
   ResolutionAnalysis,
   SourceRequirement,
 } from "@/domain/types";
@@ -284,6 +286,31 @@ export const activityLogs = sqliteTable(
     at: text("at").notNull().default(now),
   },
   (t) => [index("logs_project_idx").on(t.projectId, t.at)],
+);
+
+/**
+ * 質疑の練習記録（U9）。
+ * 練習回数を増やす運用なので、後から振り返れるように残す。
+ */
+export const practiceSessions = sqliteTable(
+  "practice_sessions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    mode: text("mode", { enum: ["attack", "defense"] }).notNull(),
+    /** AIが演じる側の立論 */
+    opponentVariantId: text("opponent_variant_id")
+      .notNull()
+      .references(() => caseVariants.id, { onDelete: "cascade" }),
+    turns: text("turns", { mode: "json" }).$type<PracticeTurn[]>().notNull(),
+    feedback: text("feedback", { mode: "json" }).$type<PracticeFeedback>(),
+    createdAt: text("created_at").notNull().default(now),
+    finishedAt: text("finished_at"),
+  },
+  (t) => [index("practice_project_idx").on(t.projectId, t.userId)],
 );
 
 /** A6 コスト可視化。管理画面のみに表示し一般ユーザーには出さない */

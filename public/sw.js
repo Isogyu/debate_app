@@ -21,7 +21,13 @@ const OFFLINE_PATTERNS = [
 ];
 
 /** 保存してはいけないもの。生成・ログイン・ダウンロードは常に実サーバーへ */
-const NEVER_CACHE = [/^\/api\//, /^\/login$/, /\/export\//];
+const NEVER_CACHE = [
+  /^\/api\//,
+  /^\/login$/,
+  /\/export\//,
+  // 質疑練習はAIとのやり取りが要るので、保存しても使えない
+  /\/simulator/,
+];
 
 function isOfflinePage(pathname) {
   return (

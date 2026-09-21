@@ -157,6 +157,12 @@ export default async function DashboardPage({
             ready={blockRows.length > 0}
           />
           <Card
+            title="質疑練習"
+            href={`/projects/${projectId}/simulator`}
+            lines={["AI相手に質疑の練習", "終了後に講評がもらえます"]}
+            ready={variants.length > 0}
+          />
+          <Card
             title="エクスポート"
             href={`/projects/${projectId}/export`}
             lines={["Word・PDF・本番パック"]}

@@ -218,6 +218,18 @@ export const claimRegenerationSchema = z.object({
 });
 export type ClaimRegeneration = z.infer<typeof claimRegenerationSchema>;
 
+// ── 質疑シミュレーター（U9） ──────────────────────────
+export const simulatorReplySchema = z.object({
+  reply: z.string().min(1),
+});
+
+export const simulatorFeedbackSchema = z.object({
+  strengths: z.array(z.string()),
+  weaknesses: z.array(z.string()),
+  suggestions: z.array(z.string()),
+  summary: z.string(),
+});
+
 export const STEP_SCHEMAS = {
   analysis: analysisOutputSchema,
   case_outline: caseOutlineOutputSchema,

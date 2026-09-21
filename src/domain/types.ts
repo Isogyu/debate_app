@@ -296,6 +296,39 @@ export interface GenerationJob {
   createdBy: string;
 }
 
+// ── 質疑シミュレーター（U9） ──────────────────────────
+/** attack=自分が質問する練習 / defense=自分が質問される練習 */
+export type PracticeMode = "attack" | "defense";
+
+export interface PracticeTurn {
+  speaker: "user" | "ai";
+  text: string;
+  at: string;
+}
+
+export interface PracticeFeedback {
+  /** よかった点。練習は続けてもらうことが第一なので必ず出す */
+  strengths: string[];
+  /** 次に直すとよい点 */
+  weaknesses: string[];
+  /** 具体的な言い換えの例。抽象的な助言だけだと動けない */
+  suggestions: string[];
+  summary: string;
+}
+
+export interface PracticeSession {
+  id: string;
+  projectId: string;
+  userId: string;
+  mode: PracticeMode;
+  /** AIが演じる側の立論 */
+  opponentVariantId: string;
+  turns: PracticeTurn[];
+  feedback?: PracticeFeedback;
+  createdAt: string;
+  finishedAt?: string;
+}
+
 // ── 完全性・責任追跡性 ────────────────────────────────────
 export interface Revision {
   id: string;
