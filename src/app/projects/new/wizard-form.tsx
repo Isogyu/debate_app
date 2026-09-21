@@ -25,7 +25,7 @@ const SIDES = [
   },
 ] as const;
 
-export function WizardForm() {
+export function WizardForm({ isChange = false }: { isChange?: boolean }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     createProject,
     {},
@@ -146,7 +146,11 @@ export function WizardForm() {
           disabled={pending}
           className="rounded bg-[var(--accent)] px-6 py-3 font-bold text-white disabled:opacity-60"
         >
-          {pending ? "分析しています…" : "論題を分析する →"}
+          {pending
+            ? "分析しています…"
+            : isChange
+              ? "このお題に変更して分析する →"
+              : "論題を分析する →"}
         </button>
       </div>
       {pending && (

@@ -9,7 +9,7 @@
  *  - 残り7ステップは人が分析確認画面で承認するまで走らせない（品質ゲート）。
  */
 
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
@@ -51,6 +51,18 @@ export async function createProject(
   // ログイン済みの利用者。アクセス制御はアプリ共通の合言葉が担う（§6.2）
   const userId = await requireSession();
   const authorName = (await currentUserName()) ?? "unknown";
+
+  // 扱うお題は常に1つ。前のお題は消さずに片付ける（練習の振り返りに使える）
+  const previous = await db
+    .select()
+    .from(projects)
+    .where(ne(projects.status, "archived"));
+  for (const old of previous) {
+    await db
+      .update(projects)
+      .set({ status: "archived", updatedAt: nowIso() })
+      .where(eq(projects.id, old.id));
+  }
 
   const teamId = newId("team");
   await db.insert(teams).values({ id: teamId, name: teamName || authorName });
