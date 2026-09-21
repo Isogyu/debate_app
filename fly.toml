@@ -8,7 +8,7 @@
 #   - ボリューム   … GB×月。マシン停止中も発生する（唯一の固定費）
 #   - 送信量       … 外向きの通信量。テキスト中心なので誤差の範囲
 
-app = "debate-app"
+app = "debate-app-zemi"
 primary_region = "nrt"   # 東京
 
 [build]
