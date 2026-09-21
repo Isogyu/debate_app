@@ -160,7 +160,9 @@ function StructuredView({
 }) {
   return (
     <div className="space-y-6">
-      <FrameEditor projectId={projectId} variant={variant} />
+      {/* 実フォーマットの Ⅰ→Ⅱ→Ⅲ の順に出す。
+          編集は主張と結論をまとめて扱うが、表示順は崩さない */}
+      <FrameEditor projectId={projectId} variant={variant} part="claim" />
 
       <section>
         <h2 className="mb-3 text-lg font-bold">Ⅱ. 理由</h2>
@@ -189,17 +191,24 @@ function StructuredView({
           </div>
         ))}
       </section>
+
+      <FrameEditor projectId={projectId} variant={variant} part="conclusion" />
     </div>
   );
 }
 
-/** Ⅰ.主張 と Ⅲ.結論 */
+/**
+ * Ⅰ.主張 と Ⅲ.結論。
+ * 編集はひとつのフォームで両方を扱うが、表示は実フォーマットの位置に分けて出す。
+ */
 function FrameEditor({
   projectId,
   variant,
+  part,
 }: {
   projectId: string;
   variant: VariantView;
+  part: "claim" | "conclusion";
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(
     saveCaseFrame,
@@ -215,30 +224,26 @@ function FrameEditor({
 
   if (!editing) {
     return (
-      <>
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-lg font-bold">Ⅰ. 主張</h2>
-            <button
-              onClick={() => setEditing(true)}
-              disabled={!online}
-              title={online ? undefined : "オフラインでは編集できません"}
-              className="rounded border border-[var(--line)] px-3 py-1 text-sm disabled:opacity-40"
-            >
-              編集
-            </button>
-          </div>
-          <p className="rounded border border-[var(--line)] p-4">
-            {variant.debateCase.claim}
-          </p>
-        </section>
-        <section>
-          <h2 className="mb-2 text-lg font-bold">Ⅲ. 結論</h2>
-          <p className="rounded border border-[var(--line)] p-4">
-            {variant.debateCase.conclusion}
-          </p>
-        </section>
-      </>
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-lg font-bold">
+            {part === "claim" ? "Ⅰ. 主張" : "Ⅲ. 結論"}
+          </h2>
+          <button
+            onClick={() => setEditing(true)}
+            disabled={!online}
+            title={online ? undefined : "オフラインでは編集できません"}
+            className="min-h-11 rounded border border-[var(--line)] px-4 text-sm disabled:opacity-40"
+          >
+            編集
+          </button>
+        </div>
+        <p className="rounded border border-[var(--line)] p-4">
+          {part === "claim"
+            ? variant.debateCase.claim
+            : variant.debateCase.conclusion}
+        </p>
+      </section>
     );
   }
 

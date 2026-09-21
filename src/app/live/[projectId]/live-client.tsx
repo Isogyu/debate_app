@@ -125,18 +125,26 @@ export function LiveClient({ data }: { data: LiveData }) {
             <h1 className="mb-1 text-xl font-bold">{data.title}</h1>
             <p className="mb-5 text-base">相手の主張はどのカテゴリ？</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {data.categories.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setCategoryId(c.id)}
-                  className="min-h-28 rounded border-2 border-[var(--accent)] p-4 text-lg font-bold text-[var(--accent)]"
-                >
-                  {c.name}
-                  <span className="mt-1 block text-sm font-normal text-[var(--muted)]">
-                    ({countFor(c.id)})
-                  </span>
-                </button>
-              ))}
+              {/* 件数の多い順に並べ、0件は末尾かつ押せなくする。
+                  試合中に押して空振りするのが一番困る */}
+              {[...data.categories]
+                .sort((a, b) => countFor(b.id) - countFor(a.id))
+                .map((c) => {
+                  const n = countFor(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setCategoryId(c.id)}
+                      disabled={n === 0}
+                      className="min-h-28 rounded border-2 border-[var(--accent)] p-4 text-lg font-bold text-[var(--accent)] disabled:border-[var(--line)] disabled:text-[var(--muted)]"
+                    >
+                      {c.name}
+                      <span className="mt-1 block text-sm font-normal text-[var(--muted)]">
+                        {n === 0 ? "なし" : `(${n})`}
+                      </span>
+                    </button>
+                  );
+                })}
             </div>
             {data.categories.length === 0 && (
               <p className="text-[var(--muted)]">
@@ -173,7 +181,9 @@ export function LiveClient({ data }: { data: LiveData }) {
             </ul>
             {visibleBlocks.length === 0 && (
               <p className="text-[var(--muted)]">
-                該当するブロックがありません。検索語を短くしてみてください。
+                {query.trim()
+                  ? "見つかりませんでした。語を短くするか、カテゴリから探してください。"
+                  : "このカテゴリの準備はまだありません。別のカテゴリを見てください。"}
               </p>
             )}
           </>

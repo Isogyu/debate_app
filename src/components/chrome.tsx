@@ -13,15 +13,11 @@ export function Header() {
         <Link href="/" className="text-lg font-bold">
           ディベート支援
         </Link>
+        {/* 未実装の画面（練習問題・ガイド・管理）へのリンクは置かない。
+            押して404を見せるくらいなら、無い方がよい */}
         <nav className="flex gap-4 text-sm">
-          <Link href="/practice" className="hover:underline">
-            練習問題
-          </Link>
-          <Link href="/guide" className="hover:underline">
-            ガイド
-          </Link>
-          <Link href="/admin" className="hover:underline">
-            管理
+          <Link href="/" className="hover:underline">
+            論題一覧
           </Link>
         </nav>
       </div>
