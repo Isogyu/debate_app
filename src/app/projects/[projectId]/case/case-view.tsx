@@ -13,6 +13,11 @@ import Link from "next/link";
 import { splitRefs, SECTION_TYPE_LABELS } from "@/domain/case-format";
 import { useOnline } from "@/components/pwa";
 import { SpeechMeter } from "@/components/speech-meter";
+import {
+  DeleteVariantButton,
+  VariantFailure,
+  VariantManager,
+} from "./variant-manager";
 import type { Claim, DebateCase, Side } from "@/domain/types";
 import {
   adoptVariant,
@@ -29,6 +34,8 @@ export interface VariantView {
   approach: string;
   role: string;
   debateCase: DebateCase;
+  /** 生成に失敗したときの理由。作りかけのまま止まっている場合に入る */
+  buildError?: string;
   /** 資料番号 → その資料が証明すること。リンクのホバーに出す */
   refTitles: Record<number, string>;
 }
@@ -44,10 +51,13 @@ export function CaseView({
   projectId,
   variants,
   categoryNames,
+  generating = false,
 }: {
   projectId: string;
   variants: VariantView[];
   categoryNames: Record<string, string>;
+  /** 立論パターンの生成が動いているか */
+  generating?: boolean;
 }) {
   const [side, setSide] = useState<Side>(
     variants.find((v) => v.role === "adopted")?.side ??
@@ -63,11 +73,22 @@ export function CaseView({
 
   if (!variant) {
     return (
-      <p className="rounded border border-dashed border-[var(--line)] p-8 text-center text-[var(--muted)]">
-        この側の立論はまだ生成されていません。
-      </p>
+      <div>
+        <p className="rounded border border-dashed border-[var(--line)] p-8 text-center text-[var(--muted)]">
+          この側の立論はまだ生成されていません。
+        </p>
+        <VariantManager
+          projectId={projectId}
+          side={side}
+          variantCount={0}
+          generating={generating}
+        />
+      </div>
     );
   }
+
+  // 生成の途中は中身が空。編集画面を出しても操作できない
+  const building = variant.debateCase.sections.length === 0;
 
   return (
     <div>
@@ -124,24 +145,59 @@ export function CaseView({
         </button>
       </div>
 
-      {/* 5分を超えると減点されるので、見ているあいだ常に出す */}
-      <SpeechMeter text={variant.debateCase.fullText} />
-
-      {wordPreview ? (
-        <WordPreview text={variant.debateCase.fullText} />
-      ) : (
-        <StructuredView
-          projectId={projectId}
-          variant={variant}
-          categoryNames={categoryNames}
+      {building && variant.buildError ? (
+        <VariantFailure
+          variantId={variant.id}
+          label={`${variant.framework} / ${variant.approach}`}
+          message={variant.buildError}
         />
+      ) : building ? (
+        <p className="rounded border border-[var(--accent)] p-6 text-center">
+          このパターンを作っています（2〜3分）。
+          <span className="mt-1 block text-sm text-[var(--muted)]">
+            {variant.framework} / {variant.approach}
+          </span>
+        </p>
+      ) : (
+        <>
+          {/* 時間は超過も余りすぎも減点なので、見ているあいだ常に出す */}
+          <SpeechMeter text={variant.debateCase.fullText} />
+
+          {wordPreview ? (
+            <WordPreview text={variant.debateCase.fullText} />
+          ) : (
+            <StructuredView
+              projectId={projectId}
+              variant={variant}
+              categoryNames={categoryNames}
+            />
+          )}
+        </>
       )}
 
-      {sideVariants.length > 1 &&
-        variant.role !== "adopted" &&
-        variant.role !== "opponent_prediction" && (
-          <AdoptButton variantId={variant.id} />
-        )}
+      {/* 中身が無いパターンは採用できない。
+          削除の導線も、失敗カードの中に既にあるので二重に出さない */}
+      {!building && sideVariants.length > 1 && (
+        <>
+          {variant.role !== "adopted" &&
+            variant.role !== "opponent_prediction" && (
+              <AdoptButton variantId={variant.id} />
+            )}
+          <div className="mt-4">
+            <DeleteVariantButton
+              variantId={variant.id}
+              label={`${variant.framework} / ${variant.approach}`}
+            />
+          </div>
+        </>
+      )}
+
+      <VariantManager
+        projectId={projectId}
+        side={side}
+        variantCount={sideVariants.length}
+        generating={generating}
+      />
     </div>
   );
 }

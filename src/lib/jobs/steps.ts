@@ -157,12 +157,26 @@ async function stepAnalysis(projectId: string): Promise<LlmUsage> {
 
 // ── 2〜4. 立論骨子 → 本文 → 資料要件 ─────────────────────
 /** 両側ぶんの骨子を作り、空の本文で登録しておく */
-async function stepCaseOutline(projectId: string): Promise<LlmUsage> {
+async function stepCaseOutline(
+  projectId: string,
+  /** 指定すると、そのパターンだけを作る（A1のバリエーション生成） */
+  variantId?: string,
+): Promise<LlmUsage> {
   const project = await loadProject(projectId);
   const analysis = project.analysis;
   if (!analysis) throw new Error("先に論題の分析を終えてください。");
 
   let total: LlmUsage = { inputTokens: 0, outputTokens: 0, model: "" };
+
+  // 1パターンだけを作る場合は、先に用意された枠に中身を入れる
+  if (variantId) {
+    const [target] = await db
+      .select()
+      .from(caseVariants)
+      .where(eq(caseVariants.id, variantId));
+    if (!target) throw new Error("立論パターンが見つかりませんでした。");
+    return fillOutline(projectId, target, project.resolution, analysis);
+  }
 
   // このステップをやり直すときは作り直しになる。
   // 消さずに入れると同じ論題の立論が二重に並ぶため、先に消す
@@ -215,6 +229,61 @@ async function stepCaseOutline(projectId: string): Promise<LlmUsage> {
   return total;
 }
 
+/**
+ * 既にある枠（側・枠組み・切り口が決まっているもの）に骨子を入れる。
+ * バリエーション生成では、枠だけ先に作って中身を後から埋める。
+ */
+async function fillOutline(
+  projectId: string,
+  target: { id: string; side: Side; framework: string; approach: string },
+  resolution: string,
+  analysis: NonNullable<Awaited<ReturnType<typeof loadProject>>["analysis"]>,
+): Promise<LlmUsage> {
+  const base = analysis.frameworks[target.side];
+  // 枠組みが指定されていればそれを使う。なければ分析結果のものを使う
+  const frameworkName = target.framework || base.name;
+
+  const { data, usage } = await getLlmProvider().generateStructured({
+    system: P.SYSTEM_BASE,
+    prompt: P.caseOutlinePrompt({
+      resolution,
+      side: target.side,
+      frameworkName,
+      criteria: frameworkName === base.name ? base.criteria : [],
+      secondBlockType: target.approach.includes("比較衡量")
+        ? "comparison"
+        : "environment",
+      approachHint: target.approach || undefined,
+    }),
+    schema: caseOutlineOutputSchema,
+  });
+
+  await db
+    .update(caseVariants)
+    .set({
+      framework: data.framework,
+      approach: target.approach || data.approach,
+      debateCase: {
+        side: target.side,
+        valuePremise: data.valuePremise,
+        claim: data.claim,
+        conclusion: data.conclusion,
+        fullText: "",
+        sections: data.sections.map((sec) => ({
+          id: newId("sec"),
+          title: stripLeadingNumber(sec.title),
+          type: sec.type,
+          subsections: sec.subsectionTitles.map((t) =>
+            emptyClaim(stripLeadingNumber(t)),
+          ),
+        })),
+      },
+    })
+    .where(eq(caseVariants.id, target.id));
+
+  return usage;
+}
+
 function emptyClaim(title: string): Claim {
   return {
     id: newId("clm"),
@@ -228,12 +297,16 @@ function emptyClaim(title: string): Claim {
   };
 }
 
-async function stepCaseBody(projectId: string): Promise<LlmUsage> {
+async function stepCaseBody(
+  projectId: string,
+  variantId?: string,
+): Promise<LlmUsage> {
   const project = await loadProject(projectId);
-  const variants = await db
+  const all = await db
     .select()
     .from(caseVariants)
     .where(eq(caseVariants.projectId, projectId));
+  const variants = variantId ? all.filter((v) => v.id === variantId) : all;
 
   let total: LlmUsage = { inputTokens: 0, outputTokens: 0, model: "" };
 
@@ -374,11 +447,15 @@ async function stepCaseBody(projectId: string): Promise<LlmUsage> {
   return total;
 }
 
-async function stepSourceRequirements(projectId: string): Promise<LlmUsage> {
-  const variants = await db
+async function stepSourceRequirements(
+  projectId: string,
+  variantId?: string,
+): Promise<LlmUsage> {
+  const all = await db
     .select()
     .from(caseVariants)
     .where(eq(caseVariants.projectId, projectId));
+  const variants = variantId ? all.filter((v) => v.id === variantId) : all;
   const materials = await db
     .select()
     .from(sourceMaterials)
@@ -655,7 +732,10 @@ function mergeUsage(a: LlmUsage, b: LlmUsage): LlmUsage {
   };
 }
 
-const HANDLERS: Record<GenStep, (projectId: string) => Promise<LlmUsage>> = {
+const HANDLERS: Record<
+  GenStep,
+  (projectId: string, variantId?: string) => Promise<LlmUsage>
+> = {
   analysis: stepAnalysis,
   case_outline: stepCaseOutline,
   case_body: stepCaseBody,
@@ -669,6 +749,8 @@ const HANDLERS: Record<GenStep, (projectId: string) => Promise<LlmUsage>> = {
 export async function runStep(
   projectId: string,
   step: GenStep,
+  /** 指定すると、その立論パターンだけを対象にする */
+  variantId?: string,
 ): Promise<LlmUsage> {
-  return HANDLERS[step](projectId);
+  return HANDLERS[step](projectId, variantId);
 }

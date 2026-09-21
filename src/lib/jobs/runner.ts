@@ -44,6 +44,40 @@ export async function createJob(
   return id;
 }
 
+/** バリエーション生成で走らせるステップ。立論を1本作るのに必要な3つ */
+export const VARIANT_STEPS: GenStep[] = [
+  "case_outline",
+  "case_body",
+  "source_req",
+];
+
+/**
+ * 立論パターンを1本追加するジョブ（A1）。
+ *
+ * 8ステップの本生成とは別物。既に作られた空の枠（側・枠組み・切り口が
+ * 決まっている）に中身を入れるだけなので、3ステップで足りる。
+ */
+export async function createVariantJob(
+  projectId: string,
+  variantId: string,
+  createdBy: string,
+): Promise<string> {
+  const id = newId("job");
+  await db.insert(generationJobs).values({
+    id,
+    projectId,
+    variantId,
+    steps: VARIANT_STEPS.map((step) => ({
+      step,
+      status: "pending" as const,
+      attempts: 0,
+    })),
+    status: "queued",
+    createdBy,
+  });
+  return id;
+}
+
 /** プロジェクトに紐づく最新のジョブ。画面は常にこれを見る */
 export async function latestJob(projectId: string) {
   const rows = await db
@@ -109,7 +143,12 @@ export async function runJob(
     steps[i] = { ...step, status: "running" };
     await saveSteps(jobId, steps);
 
-    const outcome = await attemptStep(job.projectId, step.step, jobId);
+    const outcome = await attemptStep(
+      job.projectId,
+      step.step,
+      jobId,
+      job.variantId ?? undefined,
+    );
     steps[i] = outcome;
     await saveSteps(jobId, steps);
   }
@@ -134,10 +173,12 @@ export async function runJob(
     })
     .where(eq(generationJobs.id, jobId));
 
+  // 立論パターンを1本足すだけのジョブで、論題全体の状態を動かさない。
+  // 「生成中」のまま止まって見えるのを避ける
   await db
     .update(projects)
     .set({
-      status: projectStatusFor(status),
+      ...(job.variantId ? {} : { status: projectStatusFor(status) }),
       updatedAt: nowIso(),
     })
     .where(eq(projects.id, job.projectId));
@@ -156,6 +197,8 @@ async function attemptStep(
   projectId: string,
   step: GenStep,
   jobId: string,
+  /** バリエーション生成では、対象のパターンだけを作る */
+  variantId?: string,
 ): Promise<GenerationStepState> {
   let attempts = 0;
   let lastError = "";
@@ -163,7 +206,7 @@ async function attemptStep(
   while (attempts < MAX_ATTEMPTS) {
     attempts++;
     try {
-      const usage = await runStep(projectId, step);
+      const usage = await runStep(projectId, step, variantId);
       if (usage) {
         await db.insert(apiUsage).values({
           id: newId("use"),

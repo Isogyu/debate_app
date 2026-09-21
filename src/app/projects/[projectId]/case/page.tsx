@@ -5,9 +5,16 @@
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
-import { caseVariants, issueCategories, projects, sourceMaterials } from "@/db/schema";
+import {
+  caseVariants,
+  generationJobs,
+  issueCategories,
+  projects,
+  sourceMaterials,
+} from "@/db/schema";
 import { Breadcrumb, Header, VerificationBadge } from "@/components/chrome";
 import { isProjectVerified } from "@/lib/verification";
+import { latestJob } from "@/lib/jobs/runner";
 import { CaseView, type VariantView } from "./case-view";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +33,20 @@ export default async function CasePage({
 
   // 資料をすべて人が確認したらバッジが「確認済」に変わる
   const verified = await isProjectVerified(projectId);
+  const job = await latestJob(projectId);
+  const generating = job?.status === "running";
+
+  // 作りかけで止まっているパターンの理由を拾う
+  const jobs = await db
+    .select()
+    .from(generationJobs)
+    .where(eq(generationJobs.projectId, projectId));
+  const buildErrorByVariant = new Map<string, string>();
+  for (const j of jobs) {
+    if (!j.variantId || j.status === "running") continue;
+    const failed = j.steps.find((s) => s.status === "failed");
+    if (failed?.error) buildErrorByVariant.set(j.variantId, failed.error);
+  }
 
   const [variants, categories, materials] = await Promise.all([
     db.select().from(caseVariants).where(eq(caseVariants.projectId, projectId)),
@@ -43,6 +64,7 @@ export default async function CasePage({
     approach: v.approach,
     role: v.role,
     debateCase: v.debateCase,
+    buildError: buildErrorByVariant.get(v.id),
     // 資料番号はこのパターン内でのみ有効。他のパターンの番号と混ぜない
     refTitles: Object.fromEntries(
       v.sourceRefs.map((r) => [r.number, provesWhatById.get(r.materialId) ?? ""]),
@@ -74,6 +96,7 @@ export default async function CasePage({
             projectId={projectId}
             variants={views}
             categoryNames={categoryNames}
+            generating={generating}
           />
         )}
       </main>

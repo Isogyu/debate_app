@@ -24,6 +24,13 @@ export const DEFAULT_MAX_TOKENS = 12000;
  * 生のエラーには内部情報が混じるので、そのまま見せない（§6.3 エラー設計）。
  */
 function translateApiError(err: unknown): Error {
+  // すでに意味のあるエラーになっているものは、そのまま通す。
+  // ここで包み直すと「APIキーが設定されていません」という具体的な案内が
+  // 「接続できませんでした」に化け、しかもリトライ対象に戻ってしまう
+  if (err instanceof LlmConfigError || err instanceof LlmTruncatedError) {
+    return err;
+  }
+
   if (!(err instanceof Anthropic.APIError)) {
     return new Error(
       "AIに接続できませんでした。通信の状況を確認して、もう一度お試しください。",
