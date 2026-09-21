@@ -9,6 +9,7 @@ import { desc } from "drizzle-orm";
 import { db } from "@/db";
 import { generationJobs, projects } from "@/db/schema";
 import { Header, SideBadge } from "@/components/chrome";
+import { InstallGuide } from "@/components/install-guide";
 import { progressOf } from "@/lib/jobs/runner";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,9 @@ export default async function Home() {
     <>
       <Header />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold">プロジェクト一覧</h1>
+        <h1 className="mb-6 text-2xl font-bold">論題一覧</h1>
+
+        <InstallGuide />
 
         <div className="mb-2 flex flex-wrap gap-3">
           <Link

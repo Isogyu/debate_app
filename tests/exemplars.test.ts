@@ -11,18 +11,39 @@ import { EXEMPLARS, exemplarFor } from "../src/domain/exemplars.ts";
 import { countSpeechChars, estimateSpeech } from "../src/domain/speech.ts";
 
 test("両側のお手本がある", () => {
-  assert.equal(EXEMPLARS.length, 2);
+  // 評価基準を立てる型と立てない型、両側ぶんで4件
+  assert.equal(EXEMPLARS.length, 4);
+  assert.equal(EXEMPLARS.filter((e) => e.side === "affirmative").length, 2);
+  assert.equal(EXEMPLARS.filter((e) => e.side === "negative").length, 2);
   assert.equal(exemplarFor("affirmative").side, "affirmative");
   assert.equal(exemplarFor("negative").side, "negative");
 });
 
-test("お手本は実フォーマットの構造を備えている", () => {
+test("どのお手本も 主張・理由・結び の三部構成である", () => {
+  // 見出しの書き方はチームによって違う。
+  // 「Ⅲ. 結論」の代わりに「Ⅳ　再主張」と書く実物があった。
+  // 区切り文字も「.」と全角空白の両方がある
   for (const ex of EXEMPLARS) {
-    assert.match(ex.text, /Ⅰ\.\s*主張/, `${ex.side}: Ⅰ.主張がない`);
-    assert.match(ex.text, /Ⅱ\.\s*理由/, `${ex.side}: Ⅱ.理由がない`);
-    assert.match(ex.text, /Ⅲ\.\s*結論/, `${ex.side}: Ⅲ.結論がない`);
-    // 資料の参照マーカーが入っていないと、参照の書き方を教えられない
-    assert.match(ex.text, /【[^】]*資料\d+参照】/, `${ex.side}: 資料参照がない`);
+    assert.match(ex.text, /Ⅰ[.\s　]*主張/, `${ex.side}: 主張がない`);
+    assert.match(ex.text, /Ⅱ[.\s　]*理由/, `${ex.side}: 理由がない`);
+    assert.match(
+      ex.text,
+      /[ⅢⅣ][.\s　]*(結論|再主張)/,
+      `${ex.side}: 結び（結論または再主張）がない`,
+    );
+  }
+});
+
+test("生成に使うお手本には資料の参照が入っている", () => {
+  // 参照の書き方を教えるのが目的なので、プロンプトへ渡す方には必須。
+  // 実物には資料参照が1つもないものもあったが、それは教材にしない
+  for (const side of ["affirmative", "negative"] as const) {
+    const ex = exemplarFor(side);
+    assert.match(
+      ex.text,
+      /【[^】]*資料\d+参照】|[（(]\s*資料\s*\d+\s*[）)]/,
+      `${side}: 資料参照がない`,
+    );
   }
 });
 

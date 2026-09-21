@@ -108,9 +108,13 @@ export function CaseView({
           </label>
         )}
 
-        <span className="rounded border border-[var(--line)] px-2 py-1 text-xs text-[var(--muted)]">
-          {ROLE_LABELS[variant.role] ?? variant.role}
-        </span>
+        {/* パターンが1つしかないうちは「採用」「候補」に意味がない。
+            複数パターン生成を実装するまでは出さない（用語が通じない） */}
+        {sideVariants.length > 1 && (
+          <span className="rounded border border-[var(--line)] px-2 py-1 text-xs text-[var(--muted)]">
+            {ROLE_LABELS[variant.role] ?? variant.role}
+          </span>
+        )}
 
         <button
           onClick={() => setWordPreview(!wordPreview)}
@@ -133,9 +137,11 @@ export function CaseView({
         />
       )}
 
-      {variant.role !== "adopted" && variant.role !== "opponent_prediction" && (
-        <AdoptButton variantId={variant.id} />
-      )}
+      {sideVariants.length > 1 &&
+        variant.role !== "adopted" &&
+        variant.role !== "opponent_prediction" && (
+          <AdoptButton variantId={variant.id} />
+        )}
     </div>
   );
 }
@@ -494,7 +500,9 @@ function RefText({
             // 読み上げ名に表示文字そのものを含める。title だけだと
             // 画面に見えている「【資料N参照】」と読み上げが食い違う
             aria-label={`${part.value} ${refTitles[part.number] ?? ""}`.trim()}
-            className="text-[var(--accent)] underline underline-offset-2"
+            // スマホで押せる大きさにする。文中のリンクは行を崩さないよう
+            // 縦の余白で高さを稼ぐ（指の当たり判定を広げる）
+            className="inline-block min-h-11 py-2 align-middle text-[var(--accent)] underline underline-offset-2"
           >
             {part.value}
           </Link>

@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { crossExamNodes, issueCategories, projects } from "@/db/schema";
 import { Breadcrumb, Header, VerificationBadge } from "@/components/chrome";
+import { isProjectVerified } from "@/lib/verification";
 import { CrossExamView, type CxNode } from "./crossexam-view";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,9 @@ export default async function CrossExamPage({
   const { projectId } = await params;
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   if (!project) notFound();
+
+  // 資料をすべて人が確認したらバッジが「確認済」に変わる
+  const verified = await isProjectVerified(projectId);
 
   const [rows, categories] = await Promise.all([
     db.select().from(crossExamNodes).where(eq(crossExamNodes.projectId, projectId)),
@@ -47,7 +51,7 @@ export default async function CrossExamPage({
         />
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold">質疑フロー</h1>
-          <VerificationBadge verified={false} />
+          <VerificationBadge verified={verified} projectId={projectId} />
         </div>
 
         {nodes.length === 0 ? (

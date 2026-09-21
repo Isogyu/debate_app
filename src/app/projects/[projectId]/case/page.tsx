@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { caseVariants, issueCategories, projects, sourceMaterials } from "@/db/schema";
 import { Breadcrumb, Header, VerificationBadge } from "@/components/chrome";
+import { isProjectVerified } from "@/lib/verification";
 import { CaseView, type VariantView } from "./case-view";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,9 @@ export default async function CasePage({
     .from(projects)
     .where(eq(projects.id, projectId));
   if (!project) notFound();
+
+  // 資料をすべて人が確認したらバッジが「確認済」に変わる
+  const verified = await isProjectVerified(projectId);
 
   const [variants, categories, materials] = await Promise.all([
     db.select().from(caseVariants).where(eq(caseVariants.projectId, projectId)),
@@ -58,7 +62,7 @@ export default async function CasePage({
         />
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold">立論</h1>
-          <VerificationBadge verified={false} />
+          <VerificationBadge verified={verified} projectId={projectId} />
         </div>
 
         {variants.length === 0 ? (

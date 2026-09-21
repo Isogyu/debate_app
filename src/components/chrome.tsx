@@ -63,16 +63,44 @@ export function SideBadge({ side }: { side: "affirmative" | "negative" }) {
 /**
  * AI生成物であることを常に明示する（REQUIREMENTS §6.2 信頼性）。
  * 生成の不確実性をUIに偽装しない、が設計の原則。
+ *
+ * ただし表示するだけでは足りない。「どうすれば確認済になるのか」が
+ * 分からないとバッジが消えず、ずっと未確認のまま運用されてしまう。
+ * 確認する場所（資料要件画面）へのリンクにしている。
  */
-export function VerificationBadge({ verified }: { verified: boolean }) {
-  return verified ? (
-    <span className="rounded border border-[var(--aff)] px-2 py-0.5 text-xs text-[var(--aff)]">
-      確認済
-    </span>
-  ) : (
-    <span className="rounded border border-[var(--neg)] px-2 py-0.5 text-xs text-[var(--neg)]">
-      AI生成（未確認）
-    </span>
+export function VerificationBadge({
+  verified,
+  projectId,
+}: {
+  verified: boolean;
+  /** 渡すと、確認する場所への案内リンクになる */
+  projectId?: string;
+}) {
+  if (verified) {
+    return (
+      <span className="rounded border border-[var(--aff)] px-2 py-0.5 text-xs text-[var(--aff)]">
+        確認済
+      </span>
+    );
+  }
+
+  const label = "AI生成（未確認）";
+  if (!projectId) {
+    return (
+      <span className="rounded border border-[var(--neg)] px-2 py-0.5 text-xs text-[var(--neg)]">
+        {label}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={`/projects/${projectId}/sources?status=needed`}
+      title="資料の出典を登録し、実物を確認すると「確認済」になります"
+      className="inline-flex min-h-11 items-center rounded border border-[var(--neg)] px-2 text-xs text-[var(--neg)] underline underline-offset-2"
+    >
+      {label}　確認のしかた →
+    </Link>
   );
 }
 

@@ -4,10 +4,12 @@
  * 立論は読み上げ5分。**超過すると減点される**ため、分量は品質そのもの。
  * 長く詳しい立論は、それだけで悪い立論になる。
  *
- * 基準は実物から取った（`docs/samples/`）。実際の試合で使われた立論は
- * 本文1,528字と1,577字で、これが5分に収まる長さにあたる。
+ * 基準は実物から取った（`docs/samples/`）。実際の試合で使われた立論4件は
+ * 本文1,494〜1,577字で、これが5分に収まる長さにあたる。
  * ここから逆算して既定の読み上げ速度を 320字/分 としている。
  */
+
+import { REF_MARKER_GLOBAL } from "./case-format.ts";
 
 /** 立論の持ち時間（秒） */
 export const SPEECH_LIMIT_SECONDS = 300;
@@ -29,7 +31,11 @@ const WARN_RATIO = 0.9;
  */
 export function countSpeechChars(text: string): number {
   return text
+    // 資料の参照は書き方が何であれ読み上げない（【資料N参照】/ (資料N)）
+    .replace(REF_MARKER_GLOBAL, "")
     .replace(/【[^】]*】/g, "")
+    // 論点の区切りに引く罫線。実物の原稿に入っていたが読み上げない
+    .replace(/[＿_ー−―—=＝-]{3,}/g, "")
     .replace(/\s/g, "")
     .replace(/[（(][^）)]*[）)]/g, (m) =>
       // 「（1）」のような見出し番号は読まないが、文中の補足は読む

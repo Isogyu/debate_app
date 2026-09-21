@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { SpeechTimer } from "./speech-timer";
 import {
   DEFAULT_CHARS_PER_MINUTE,
   estimateSpeech,
@@ -27,6 +28,7 @@ const RATES = [260, 290, 320, 350, 380];
 export function SpeechMeter({ text }: { text: string }) {
   // 読み上げ速度は人によってかなり違う。実際に測って選べるようにする
   const [rate, setRate] = useState(DEFAULT_CHARS_PER_MINUTE);
+  const [timerOpen, setTimerOpen] = useState(false);
   const est = estimateSpeech(text, rate);
   const color = COLORS[est.verdict];
   const budget = speechBudgetChars(rate);
@@ -49,7 +51,7 @@ export function SpeechMeter({ text }: { text: string }) {
           <select
             value={rate}
             onChange={(e) => setRate(Number(e.target.value))}
-            className="rounded border border-[var(--line)] p-1"
+            className="min-h-11 rounded border border-[var(--line)] px-2"
           >
             {RATES.map((r) => (
               <option key={r} value={r}>
@@ -71,6 +73,32 @@ export function SpeechMeter({ text }: { text: string }) {
           }}
         />
       </div>
+
+      {/* 推定と実測は必ずずれる。実際に測る手段を同じ場所に置く */}
+      <div className="mt-3">
+        <button
+          onClick={() => setTimerOpen(!timerOpen)}
+          className="min-h-11 rounded border-2 border-[var(--accent)] px-4 text-sm font-bold text-[var(--accent)]"
+        >
+          {timerOpen ? "タイマーを閉じる" : "実際に読んで測る（タイマー）"}
+        </button>
+      </div>
+
+      {timerOpen && (
+        <div className="mt-3">
+          <SpeechTimer
+            chars={est.chars}
+            // 測った速さをそのまま推定に反映する。一番近い選択肢に寄せる
+            onMeasured={(m) =>
+              setRate(
+                RATES.reduce((a, b) =>
+                  Math.abs(b - m) < Math.abs(a - m) ? b : a,
+                ),
+              )
+            }
+          />
+        </div>
+      )}
 
       {est.verdict === "over" && (
         <p className="mt-2 text-sm" style={{ color }}>

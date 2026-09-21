@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { caseVariants, issueCategories, projects, rebuttals } from "@/db/schema";
 import { Breadcrumb, Header, VerificationBadge } from "@/components/chrome";
+import { isProjectVerified } from "@/lib/verification";
 import { RebuttalView, type RebuttalView as RebuttalItem } from "./rebuttal-view";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,9 @@ export default async function RebuttalPage({
   const { projectId } = await params;
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   if (!project) notFound();
+
+  // 資料をすべて人が確認したらバッジが「確認済」に変わる
+  const verified = await isProjectVerified(projectId);
 
   const [rows, variants, categories] = await Promise.all([
     db.select().from(rebuttals).where(eq(rebuttals.projectId, projectId)),
@@ -63,7 +67,7 @@ export default async function RebuttalPage({
         />
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold">反駁・比較</h1>
-          <VerificationBadge verified={false} />
+          <VerificationBadge verified={verified} projectId={projectId} />
         </div>
 
         <RebuttalView

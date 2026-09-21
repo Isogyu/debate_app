@@ -63,16 +63,19 @@ export function SourcesView({
   variants,
   currentVariantId,
   categoryNames,
+  initialStatus = "all",
 }: {
   projectId: string;
   items: SourceItem[];
   variants: VariantOption[];
   currentVariantId: string;
   categoryNames: Record<string, string>;
+  /** 「AI生成（未確認）」から来たときは未発見だけを出す */
+  initialStatus?: "all" | "needed" | "found" | "verified";
 }) {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [status, setStatus] = useState<"all" | "needed" | "found" | "verified">(
-    "all",
+    initialStatus,
   );
 
   const visible = items.filter(
@@ -90,10 +93,26 @@ export function SourcesView({
 
   return (
     <div>
+      {/* 「確認済」にする手順が分からないと、バッジが永遠に消えない */}
+      <details className="mb-4 rounded border border-[var(--line)] p-3 text-sm">
+        <summary className="cursor-pointer font-bold">
+          「AI生成（未確認）」を「確認済」にするには
+        </summary>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>下の資料ごとに「探し方」と「情報源」を見て、実物を探す</li>
+          <li>見つけたら「出典・引用文を登録する」から出典を入れる（→ 発見済）</li>
+          <li>実物を目で確かめたら「実物を確認した」を押す（→ 確認済）</li>
+        </ol>
+        <p className="mt-2 text-[var(--muted)]">
+          全部の資料が確認済になると、立論のバッジも「確認済」に変わります。
+        </p>
+      </details>
+
       <div className="mb-5 space-y-3 border-b border-[var(--line)] pb-4">
+        {/* 選べる相手がいて初めて意味がある。1つなら用語ごと隠す */}
         {variants.length > 1 && (
           <label className="block text-sm">
-            <span className="mr-2 text-[var(--muted)]">立論パターン:</span>
+            <span className="mr-2 text-[var(--muted)]">どの立論の資料か:</span>
             <select
               defaultValue={currentVariantId}
               onChange={(e) => {
@@ -108,7 +127,7 @@ export function SourcesView({
               ))}
             </select>
             <span className="ml-2 text-xs text-[var(--muted)]">
-              ※資料番号はパターンごとに振られます
+              ※資料番号は立論ごとに振られます
             </span>
           </label>
         )}

@@ -20,10 +20,10 @@ export default async function SourcesPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ variant?: string }>;
+  searchParams: Promise<{ variant?: string; status?: string }>;
 }) {
   const { projectId } = await params;
-  const { variant: variantParam } = await searchParams;
+  const { variant: variantParam, status: statusParam } = await searchParams;
 
   const [project] = await db
     .select()
@@ -112,6 +112,13 @@ export default async function SourcesPage({
               label: `${v.side === "affirmative" ? "肯定側" : "否定側"} ${v.framework} / ${v.approach}`,
             }))}
             currentVariantId={current!.id}
+            initialStatus={
+              statusParam === "needed" ||
+              statusParam === "found" ||
+              statusParam === "verified"
+                ? statusParam
+                : "all"
+            }
             categoryNames={Object.fromEntries(
               categories.map((c) => [c.id, c.name]),
             )}

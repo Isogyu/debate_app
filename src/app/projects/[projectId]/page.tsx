@@ -19,6 +19,7 @@ import {
   sourceMaterials,
 } from "@/db/schema";
 import { Breadcrumb, Header, SideBadge, VerificationBadge } from "@/components/chrome";
+import { isProjectVerified } from "@/lib/verification";
 import { GEN_STEP_LABELS } from "@/domain/types";
 import { latestJob, progressOf } from "@/lib/jobs/runner";
 import { GenerationProgress } from "./progress";
@@ -36,6 +37,9 @@ export default async function DashboardPage({
     .from(projects)
     .where(eq(projects.id, projectId));
   if (!project) notFound();
+
+  // 資料をすべて人が確認したらバッジが「確認済」に変わる
+  const verified = await isProjectVerified(projectId);
 
   const [variants, materials, blockRows, rebuttalRows, categories, cxRows, job] =
     await Promise.all([
@@ -61,7 +65,7 @@ export default async function DashboardPage({
           <h1 className="mb-2 text-xl font-bold">{project.resolution}</h1>
           <div className="flex flex-wrap items-center gap-2">
             <SideBadge side={project.mySide} />
-            <VerificationBadge verified={false} />
+            <VerificationBadge verified={verified} projectId={projectId} />
             {project.isCompetitionTopic && (
               <span className="rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--muted)]">
                 本番論題（教材公開しない）

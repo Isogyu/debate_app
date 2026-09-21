@@ -6,8 +6,41 @@
 
 import type { DebateCase } from "./types";
 
-/** 本文中の資料参照マーカー。`【資料3参照】`『【法37条1項、資料2参照】』の両形 */
-export const REF_MARKER_GLOBAL = /【([^】]*?)資料(\d+)参照】/g;
+/**
+ * 本文中の資料参照マーカー。
+ *
+ * 実物を4件確認したところ、チームによって書き方が違った:
+ *  - 【資料3参照】 / 【法37条1項、資料2参照】
+ *  - (資料2) / （資料2）   ← 半角・全角の括弧だけの形
+ * どちらも読み上げず、資料へのリンクになる。両方を認識する。
+ */
+export const REF_MARKER_GLOBAL =
+  /【([^】]*?)資料(\d+)参照】|[（(]\s*資料\s*(\d+)\s*[）)]/g;
+
+/** マーカー1つ分の解析結果 */
+export interface RefMarkerMatch {
+  /** マーカー全体の文字列 */
+  value: string;
+  /** 【法37条1項、資料2参照】の「法37条1項、」の部分。括弧型では空 */
+  prefix: string;
+  number: number;
+  index: number;
+}
+
+/** 表記ゆれを吸収してマーカーを取り出す */
+export function* matchRefMarkers(text: string): Generator<RefMarkerMatch> {
+  for (const m of text.matchAll(REF_MARKER_GLOBAL)) {
+    // 【…参照】形なら2番目、括弧だけの形なら3番目に番号が入る
+    const number = Number(m[2] ?? m[3]);
+    if (!Number.isFinite(number)) continue;
+    yield {
+      value: m[0],
+      prefix: m[1] ?? "",
+      number,
+      index: m.index ?? 0,
+    };
+  }
+}
 
 /**
  * 実フォーマットどおりの本文を組み立てる。
@@ -41,18 +74,17 @@ export function splitRefs(text: string): TextPart[] {
   const parts: TextPart[] = [];
   let last = 0;
 
-  for (const m of text.matchAll(REF_MARKER_GLOBAL)) {
-    const start = m.index ?? 0;
-    if (start > last) {
-      parts.push({ kind: "text", value: text.slice(last, start) });
+  for (const m of matchRefMarkers(text)) {
+    if (m.index > last) {
+      parts.push({ kind: "text", value: text.slice(last, m.index) });
     }
     parts.push({
       kind: "ref",
-      value: m[0],
-      prefix: m[1],
-      number: Number(m[2]),
+      value: m.value,
+      prefix: m.prefix,
+      number: m.number,
     });
-    last = start + m[0].length;
+    last = m.index + m.value.length;
   }
   if (last < text.length) {
     parts.push({ kind: "text", value: text.slice(last) });
