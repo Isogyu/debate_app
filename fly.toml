@@ -2,6 +2,11 @@
 #
 # SQLiteをボリュームに置くため、マシンは1台だけで動かす。
 # 複数台に増やすとDBファイルが分かれて別々のデータになるので増やさないこと。
+#
+# 課金される軸は3つ:
+#   - コンピュート … マシンの起動時間。停止中は発生しない
+#   - ボリューム   … GB×月。マシン停止中も発生する（唯一の固定費）
+#   - 送信量       … 外向きの通信量。テキスト中心なので誤差の範囲
 
 app = "debate-app"
 primary_region = "nrt"   # 東京
@@ -21,9 +26,12 @@ primary_region = "nrt"   # 東京
 [http_service]
   internal_port = 3000
   force_https = true          # PWAはHTTPSが必須
-  auto_stop_machines = "suspend"
+  # 使っていない間は停止する。停止中はコンピュート課金が発生しない。
+  # suspend（状態を保持したまま休止）より課金の挙動が明確なので stop を使う。
+  # 代わりに初回アクセスが数秒遅くなるが、ゼミ用途では問題にならない
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0    # 使っていない時間は止めて無料枠に収める
+  min_machines_running = 0
 
   [http_service.concurrency]
     type = "requests"

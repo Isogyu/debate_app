@@ -21,8 +21,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/drizzle ./drizzle
-COPY package.json next.config.ts ./
+# 起動時のマイグレーションに必要なものだけを持ち込む。
+# tsconfig.json がないと "@/" の別名が解決できずマイグレーションが落ちる
+COPY package.json next.config.ts tsconfig.json ./
 COPY src/db ./src/db
+COPY src/domain ./src/domain
 # データは必ずボリュームに置く。未マウントだとコンテナ再作成で全部消える
 VOLUME ["/app/data"]
 EXPOSE 3000

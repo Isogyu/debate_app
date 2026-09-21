@@ -13,14 +13,43 @@ URLを1つ配るだけで済む形にする。
 > Vercelは使えない。ファイルシステムが永続せずSQLiteが消え、
 > 関数がレスポンス後に終了するため8ステップの生成が完走しない。
 
+## 0. 事前に必要なもの
+
+- **Fly.ioにクレジットカードを登録しておくこと。**
+  無料枠を使う場合でも登録が必須で、未登録だと `fly apps create` の時点で止まる
+- Anthropic APIキー
+- ゼミで共有する合言葉
+
+### 費用の目安
+
+課金される軸は3つ。単価は変動するので [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing/) で確認すること。
+
+| 軸 | 課金 | この構成 |
+|----|------|----------|
+| コンピュート | 起動時間×スペック | shared-cpu-1x / 512MB。使っていない間は停止するので実使用時間ぶんのみ |
+| ボリューム | GB×月（**停止中も発生**） | 1GB。唯一の固定費 |
+| 送信量 | 外向き通信 | テキスト中心で誤差の範囲 |
+
+**費用の主役はFlyではなくAnthropic API。** 実測で1論題の生成が約150円、質疑練習1回が約15円。
+
 ## 1. 初回のデプロイ
 
 ```bash
 brew install flyctl
 fly auth login
-fly launch --no-deploy   # fly.toml があるので設定はそれを使う
-fly volumes create debate_data --region nrt --size 1
 ```
+
+アプリ名はFly全体で重複できないため、`fly.toml` の `app` を自分用の名前に変える
+（例: `debate-app-zemi2026`）。そのうえで、
+
+```bash
+fly apps create <fly.tomlに書いた名前>
+fly volumes create debate_data --region nrt --size 1 --yes
+```
+
+> コマンドに `#` 以降のコメントを付けて貼らないこと。
+> `fly launch --no-deploy   # 説明` のように貼ると、`#` が引数として渡されて
+> `unknown command "#"` になる。
 
 ## 2. 秘密情報を設定する
 
