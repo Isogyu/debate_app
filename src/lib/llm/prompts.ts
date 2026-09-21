@@ -9,6 +9,8 @@
 
 import { whitelistForPrompt } from "@/domain/source-whitelist";
 import { speechBudgetGuide } from "@/domain/speech";
+import { exemplarFor } from "@/domain/exemplars";
+import type { Side } from "@/domain/types";
 
 const NEVER_FABRICATE = `
 【厳守】捏造の禁止
@@ -53,6 +55,36 @@ export const CASE_FORMAT_GUIDE = `
   例: claim に「…必要経費を控除している【資料s1参照】。」と書き、
       refSlots に { "slot": "s1", "provesWhat": "…" } を入れる
 `.trim();
+
+/**
+ * お手本の提示（few-shot）。
+ *
+ * 大事なのは「内容を真似させない」こと。お手本は別の論題のものなので、
+ * 論点まで引きずられると的外れな立論になる。
+ * 真似させるのは構成・密度・分量の3つだけだと明示する。
+ */
+function exemplarInstruction(side: Side, resolution: string): string {
+  const ex = exemplarFor(side);
+  return `
+【お手本】
+次は、実際の試合で使われた${side === "affirmative" ? "肯定" : "否定"}側の立論です。
+生成物ではなく本物です。
+
+--- ここからお手本 ---
+${ex.text}
+--- ここまでお手本 ---
+
+このお手本から**真似るもの**:
+- 構成の運び方（原則の提示 → 基準の定義 → 制度への当てはめ → 小結論）
+- 一文の長さと密度。冗長な言い換えをせず、一文で一つのことを言う
+- 分量。このお手本は読み上げ${ex.speechChars}字で、5分に収まる実例です
+
+このお手本から**真似てはいけないもの**:
+- 論点と内容。お手本は「${ex.resolution}」という**別の論題**のものです
+- 「${resolution}」に固有の争点を、自分で考えて組み立ててください
+- お手本に出てくる法令・学説・用語を、関係ないのに持ち込まないこと
+`.trim();
+}
 
 export function analysisPrompt(resolution: string): string {
   return `
@@ -105,6 +137,8 @@ ${CASE_FORMAT_GUIDE}
 第2ブロックの型: ${ctx.secondBlockType === "environment" ? "環境変化型" : "比較衡量型"}
 ${ctx.approachHint ? `切り口の指定: ${ctx.approachHint}` : ""}
 
+${exemplarInstruction(ctx.side, ctx.resolution)}
+
 この条件で立論の骨子だけを出力してください（本文はまだ書かない）。
 
 【厳守】分量の制約から逆算すること
@@ -147,11 +181,14 @@ export function caseBodyPrompt(
   resolution: string,
   categories: string[],
   subsectionCount: number,
+  side: Side,
 ): string {
   return `
 ${CASE_FORMAT_GUIDE}
 
 論題: ${resolution}
+
+${exemplarInstruction(side, resolution)}
 
 次の骨子に沿って、立論の本文を書いてください。
 

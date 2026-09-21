@@ -68,6 +68,14 @@ export const SUGGESTED_SOURCES: SuggestedSource[] = [
     hint: "統計年報書・申告所得税標本調査。専従者給与の推移などはここ。",
   },
   {
+    id: "courts",
+    label: "裁判所 裁判例検索",
+    url: "https://www.courts.go.jp/app/hanrei_jp/search1",
+    kind: "law",
+    fits: ["precedent"],
+    hint: "判決の全文が読める。事件番号と言渡日で特定して引用する。",
+  },
+  {
     id: "cinii",
     label: "CiNii Research",
     url: "https://cir.nii.ac.jp/",

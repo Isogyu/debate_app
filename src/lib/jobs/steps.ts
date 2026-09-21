@@ -263,6 +263,7 @@ async function stepCaseBody(projectId: string): Promise<LlmUsage> {
           (n, s) => n + s.subsections.length,
           0,
         ),
+        variant.side,
       ),
       schema: caseBodyOutputSchema,
       maxTokens: 12000,
