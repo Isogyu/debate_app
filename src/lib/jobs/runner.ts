@@ -1,20 +1,32 @@
 /**
- * 生成ジョブランナー（REQUIREMENTS.md §4「生成ジョブの実行方式」）
+ * 生成ジョブランナー
  *
- * 生成は数分かかり「閉じてもOK」が要件。HTTPリクエスト内で完結させず、
+ * 生成は数分かかり「閉じてもOK」が要件（v6 要件 §1 #6）。HTTPリクエスト内で完結させず、
  * ジョブをDBに永続化してバックグラウンドで進める。
  *
  *  - ステップ単位で状態を保存 → ブラウザを閉じても継続、途中失敗しても再開できる
- *  - スキーマ検証に落ちたら自動リトライ1回
+ *  - 失敗したら自動リトライ1回
  *  - 失敗したステップがあっても他のステップは止めない（partial で終える）
+ *  - サーバーが止まって途中で切れたジョブは、次の起動時に続きから再開する（instrumentation.ts）
  */
 
 import "server-only";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { apiUsage, generationJobs, projects } from "@/db/schema";
-import { GEN_STEPS, GEN_STEP_LABELS } from "@/domain/types";
-import type { GenStep, GenerationStepState } from "@/domain/types";
+import { apiUsage, generationJobs } from "@/db/schema";
+import {
+  ANALYSIS_STEPS,
+  GENERATE_STEPS,
+  GEN_STEP_LABELS,
+  IMPORT_STEPS,
+  MORE_QUESTION_STEPS,
+} from "@/domain/types";
+import type {
+  GenStep,
+  GenerationStepState,
+  JobKind,
+  JobParams,
+} from "@/domain/types";
 import {
   LlmConfigError,
   LlmSchemaError,
@@ -25,65 +37,67 @@ import { runStep } from "./steps";
 
 const MAX_ATTEMPTS = 2; // 初回 + 自動リトライ1回
 
-export function initialSteps(): GenerationStepState[] {
-  return GEN_STEPS.map((step) => ({ step, status: "pending", attempts: 0 }));
-}
+export const STEPS_BY_KIND: Record<JobKind, GenStep[]> = {
+  analysis: ANALYSIS_STEPS,
+  generate: GENERATE_STEPS,
+  import: IMPORT_STEPS,
+  more_questions: MORE_QUESTION_STEPS,
+};
 
-export async function createJob(
-  projectId: string,
-  createdBy: string,
-): Promise<string> {
+export async function createJob(opts: {
+  kind: JobKind;
+  projectId: string;
+  variantId?: string;
+  params?: JobParams;
+  createdBy: string;
+}): Promise<string> {
   const id = newId("job");
   await db.insert(generationJobs).values({
     id,
-    projectId,
-    steps: initialSteps(),
-    status: "queued",
-    createdBy,
-  });
-  return id;
-}
-
-/** バリエーション生成で走らせるステップ。立論を1本作るのに必要な3つ */
-export const VARIANT_STEPS: GenStep[] = [
-  "case_outline",
-  "case_body",
-  "source_req",
-];
-
-/**
- * 立論パターンを1本追加するジョブ（A1）。
- *
- * 8ステップの本生成とは別物。既に作られた空の枠（側・枠組み・切り口が
- * 決まっている）に中身を入れるだけなので、3ステップで足りる。
- */
-export async function createVariantJob(
-  projectId: string,
-  variantId: string,
-  createdBy: string,
-): Promise<string> {
-  const id = newId("job");
-  await db.insert(generationJobs).values({
-    id,
-    projectId,
-    variantId,
-    steps: VARIANT_STEPS.map((step) => ({
+    kind: opts.kind,
+    projectId: opts.projectId,
+    variantId: opts.variantId ?? null,
+    params: opts.params ?? {},
+    steps: STEPS_BY_KIND[opts.kind].map((step) => ({
       step,
       status: "pending" as const,
       attempts: 0,
     })),
     status: "queued",
-    createdBy,
+    createdBy: opts.createdBy,
   });
   return id;
 }
 
-/** プロジェクトに紐づく最新のジョブ。画面は常にこれを見る */
-export async function latestJob(projectId: string) {
+/** 実行中（または開始待ち）のジョブがあるか。生成中のテーマ変更を止めるのに使う（§3 確定事項） */
+export async function activeJobs(projectId: string) {
+  return db
+    .select()
+    .from(generationJobs)
+    .where(
+      and(
+        eq(generationJobs.projectId, projectId),
+        inArray(generationJobs.status, ["queued", "running"]),
+      ),
+    );
+}
+
+/** 立論ごとの最新のジョブ */
+export async function latestJobFor(variantId: string) {
   const rows = await db
     .select()
     .from(generationJobs)
-    .where(eq(generationJobs.projectId, projectId))
+    .where(eq(generationJobs.variantId, variantId))
+    .orderBy(desc(generationJobs.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function latestAnalysisJob(projectId: string) {
+  const rows = await db
+    .select()
+    .from(generationJobs)
+    .where(and(eq(generationJobs.projectId, projectId), eq(generationJobs.kind, "analysis")))
     .orderBy(desc(generationJobs.createdAt))
     .limit(1);
   return rows[0] ?? null;
@@ -94,46 +108,43 @@ async function saveSteps(jobId: string, steps: GenerationStepState[]) {
 }
 
 export interface RunOptions {
-  /**
-   * 実行するステップを限定する。
-   * 論題分析だけを先に走らせ、人が確認してから残りを流すために使う
-   * （DESIGN §3 の品質ゲート）。
-   */
+  /** 実行するステップを限定する（失敗したステップの再実行） */
   only?: GenStep[];
 }
 
 /**
- * ジョブ本体。APIハンドラからは await せずに起動する（即座に202を返すため）。
- * 管理者PC1台構成なので外部キューは使わず、DBをキューとして扱う。
+ * ジョブ本体。呼び出し側は await せずに起動してよい（即座に応答を返すため）。
+ * 外部キューは使わず、DBをキューとして扱う。
  */
-export async function runJob(
-  jobId: string,
-  options: RunOptions = {},
-): Promise<void> {
-  const [job] = await db
-    .select()
-    .from(generationJobs)
-    .where(eq(generationJobs.id, jobId));
-  if (!job) return;
+export async function runJob(jobId: string, options: RunOptions = {}): Promise<string | null> {
+  const [job] = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId));
+  if (!job) return null;
 
-  // 二重起動の防止。
-  // runJob はステップ配列をメモリに持って都度まるごと書き戻すため、
-  // 同じジョブを並行に走らせると後から書いた方が相手の結果を消してしまう。
-  // 実際にこれで、完了したはずのステップが未実行のまま done になった。
+  // 二重起動の防止。同じジョブを並行に走らせると後から書いた方が相手の結果を消す
   const claimed = await db
     .update(generationJobs)
-    .set({ status: "running", startedAt: nowIso() })
-    .where(
-      and(eq(generationJobs.id, jobId), ne(generationJobs.status, "running")),
-    )
+    .set({ status: "running", startedAt: job.startedAt ?? nowIso(), finishedAt: null })
+    .where(and(eq(generationJobs.id, jobId), ne(generationJobs.status, "running")))
     .returning({ id: generationJobs.id });
-
   if (claimed.length === 0) {
     console.warn(`[generate] ${jobId} は既に実行中のため、起動を見送りました`);
-    return;
+    return null;
   }
+  return runClaimed(job, options);
+}
 
+/** 既に running にしたジョブを進める（起動時の再開でも使う） */
+async function runClaimed(
+  job: typeof generationJobs.$inferSelect,
+  options: RunOptions,
+): Promise<string> {
   const steps = [...job.steps];
+  const ctx = {
+    jobId: job.id,
+    projectId: job.projectId,
+    variantId: job.variantId ?? undefined,
+    params: job.params ?? {},
+  };
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -141,64 +152,35 @@ export async function runJob(
     if (options.only && !options.only.includes(step.step)) continue;
 
     steps[i] = { ...step, status: "running" };
-    await saveSteps(jobId, steps);
+    await saveSteps(job.id, steps);
+    steps[i] = await attemptStep(step.step, ctx);
+    await saveSteps(job.id, steps);
 
-    const outcome = await attemptStep(
-      job.projectId,
-      step.step,
-      jobId,
-      job.variantId ?? undefined,
-    );
-    steps[i] = outcome;
-    await saveSteps(jobId, steps);
+    // 取り込みに失敗したら、後続（質疑など）は材料がないので走らせない
+    if (steps[i].status === "failed" && (step.step === "import" || step.step === "case_outline" || step.step === "case_body")) {
+      break;
+    }
   }
 
   const failed = steps.filter((s) => s.status === "failed").length;
-  const pending = steps.filter((s) => s.status === "pending").length;
-
-  // まだ流していないステップが残っている＝人の確認待ち（品質ゲートの途中）
-  const status = pending > 0
-    ? (failed > 0 ? "failed" : "awaiting_review")
-    : failed === 0
+  const done = steps.filter((s) => s.status === "done").length;
+  const status =
+    failed === 0 && done === steps.length
       ? "done"
-      : failed === steps.length
+      : done === 0
         ? "failed"
         : "partial";
 
   await db
     .update(generationJobs)
-    .set({
-      status,
-      finishedAt: pending > 0 ? null : nowIso(),
-    })
-    .where(eq(generationJobs.id, jobId));
-
-  // 立論パターンを1本足すだけのジョブで、論題全体の状態を動かさない。
-  // 「生成中」のまま止まって見えるのを避ける
-  await db
-    .update(projects)
-    .set({
-      ...(job.variantId ? {} : { status: projectStatusFor(status) }),
-      updatedAt: nowIso(),
-    })
-    .where(eq(projects.id, job.projectId));
-}
-
-/** ジョブの状態をプロジェクトの表示ステータスに写す */
-function projectStatusFor(
-  jobStatus: "awaiting_review" | "done" | "partial" | "failed",
-): "analyzing" | "generating" | "ready" {
-  // 一部失敗でも、できたところまでは使えるので ready にする
-  if (jobStatus === "done" || jobStatus === "partial") return "ready";
-  return "analyzing";
+    .set({ status, finishedAt: nowIso() })
+    .where(eq(generationJobs.id, job.id));
+  return status;
 }
 
 async function attemptStep(
-  projectId: string,
   step: GenStep,
-  jobId: string,
-  /** バリエーション生成では、対象のパターンだけを作る */
-  variantId?: string,
+  ctx: Parameters<typeof runStep>[1],
 ): Promise<GenerationStepState> {
   let attempts = 0;
   let lastError = "";
@@ -206,12 +188,12 @@ async function attemptStep(
   while (attempts < MAX_ATTEMPTS) {
     attempts++;
     try {
-      const usage = await runStep(projectId, step, variantId);
-      if (usage) {
+      const usage = await runStep(step, ctx);
+      if (usage && (usage.inputTokens || usage.outputTokens)) {
         await db.insert(apiUsage).values({
           id: newId("use"),
-          projectId,
-          jobId,
+          projectId: ctx.projectId,
+          jobId: ctx.jobId,
           step,
           model: usage.model,
           inputTokens: usage.inputTokens,
@@ -227,11 +209,9 @@ async function attemptStep(
         model: usage?.model,
       };
     } catch (err) {
-      // 設定不備はリトライしても無駄なので即座に諦める
       if (err instanceof LlmConfigError) {
         return { step, status: "failed", attempts, error: err.message };
       }
-      // 上限切れも同じ条件でやり直せば同じ結果になる。無駄な課金を避ける
       if (err instanceof LlmTruncatedError) {
         return {
           step,
@@ -240,7 +220,6 @@ async function attemptStep(
           error: `${GEN_STEP_LABELS[step]}の生成が途中で切れました。管理者に連絡してください（出力上限の引き上げが必要です）。`,
         };
       }
-      // 原因はサーバーのログに残す。これがないと管理者が調べようがない
       console.error(
         `[generate] ${step} が失敗しました (${attempts}回目):`,
         err instanceof Error ? err.message : err,
@@ -248,11 +227,9 @@ async function attemptStep(
       if (err instanceof LlmSchemaError) {
         console.error("[generate] AIの生出力(先頭800字):", err.raw.slice(0, 800));
       }
-
       lastError =
         err instanceof LlmSchemaError
-          ? // 詳細も残す。「読み取れませんでした」だけだと何も分からない
-            `${GEN_STEP_LABELS[step]}の生成に失敗しました（${err.message}）。`
+          ? `${GEN_STEP_LABELS[step]}の生成に失敗しました（${err.message}）。`
           : err instanceof Error
             ? err.message
             : "原因不明のエラーが発生しました。";
@@ -263,27 +240,49 @@ async function attemptStep(
     step,
     status: "failed",
     attempts,
-    // ユーザー向け日本語。次に何をすればよいかまで書く（§6.3 エラー設計）
     error: `${lastError} この項目だけあとから再実行できます。`,
   };
 }
 
-/** 失敗したステップだけを再実行する（§6.3 テスト戦略3） */
-export async function retryStep(jobId: string, step: GenStep): Promise<void> {
-  const [job] = await db
-    .select()
-    .from(generationJobs)
-    .where(eq(generationJobs.id, jobId));
-  if (!job) return;
-
+/** 失敗したステップと、その後ろの未完了ステップをやり直す */
+export async function retryFailed(jobId: string): Promise<string | null> {
+  const [job] = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId));
+  if (!job) return null;
   const steps = job.steps.map((s) =>
-    s.step === step ? { ...s, status: "pending" as const, error: undefined } : s,
+    s.status === "done" ? s : { ...s, status: "pending" as const, error: undefined },
   );
   await saveSteps(jobId, steps);
-  await runJob(jobId, { only: [step] });
+  await db.update(generationJobs).set({ status: "queued" }).where(eq(generationJobs.id, jobId));
+  return runJob(jobId);
 }
 
-/** 進捗表示用（DESIGN §1/§4 の「5/8」の実体） */
+/**
+ * サーバーの再起動で途中になったジョブを再開する。
+ * Fly.io は使われていない間マシンを止めるため、長い生成が途中で切れることがある。
+ */
+export async function resumeInterruptedJobs(
+  onFinished?: (job: typeof generationJobs.$inferSelect, status: string) => Promise<void>,
+) {
+  const rows = await db
+    .select()
+    .from(generationJobs)
+    .where(inArray(generationJobs.status, ["queued", "running"]));
+  for (const job of rows) {
+    const steps = job.steps.map((s) =>
+      s.status === "running" ? { ...s, status: "pending" as const } : s,
+    );
+    await db
+      .update(generationJobs)
+      .set({ steps, status: "running" })
+      .where(eq(generationJobs.id, job.id));
+    console.log(`[generate] 途中で止まっていたジョブを再開します: ${job.id}`);
+    void runClaimed({ ...job, steps, status: "running" }, {})
+      .then((status) => onFinished?.(job, status))
+      .catch((err) => console.error("[generate] 再開したジョブが異常終了しました", job.id, err));
+  }
+}
+
+/** 進捗表示用 */
 export function progressOf(steps: GenerationStepState[]) {
   const done = steps.filter((s) => s.status === "done").length;
   const failed = steps.filter((s) => s.status === "failed").length;

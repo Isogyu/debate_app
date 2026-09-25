@@ -55,7 +55,7 @@ export async function currentUserName(): Promise<string | null> {
 /** 責任追跡性: 追記のみ。あとから書き換えない */
 export async function log(
   userId: string,
-  action: "generate" | "edit" | "export" | "verify" | "login" | "pack_build",
+  action: "generate" | "edit" | "export" | "verify" | "login" | "upload" | "copy",
   target: string,
   projectId?: string,
   detail?: string,

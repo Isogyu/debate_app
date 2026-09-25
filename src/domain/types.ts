@@ -340,6 +340,22 @@ export interface SourceRequirement {
   searchKeywords: string[];
   suggestedSourceIds: string[];
   formatHint: "quote" | "chart" | "table" | "law_text" | "self_made";
+  /** 資料の計画（source_plan）。取得の手がかりと、取れなかったときの手順の材料 */
+  plan?: SourcePlan;
+}
+
+export interface SourcePlan {
+  /** 法令: 法令名と条 */
+  lawName?: string;
+  article?: string;
+  /** 統計: e-Stat で探す語 */
+  statKeywords?: string[];
+  /** 統計: 何をどう計算して何を示すか（作成手順にも使う） */
+  statisticSteps?: string[];
+  /** 官公庁・判例・論文: 検索に使う語 */
+  webQuery?: string;
+  /** 見つけたら何を抜き出すか */
+  whatToExtract: string;
 }
 
 export interface CaseVariant {
