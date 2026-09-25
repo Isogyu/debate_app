@@ -64,6 +64,8 @@ async function saveChains(
   for (const chain of output.chains) {
     const chainId = newId("chn");
     const idByKey = new Map(chain.nodes.map((n) => [n.key, newId("cx")]));
+    // 追及は連鎖の中で「後ろのノード」へだけ進める。前に戻る指定は循環のもとなので切る
+    const indexByKey = new Map(chain.nodes.map((n, i) => [n.key, i]));
     const categoryIds = await categoryIdsByName(variant.projectId, chain.categoryNames);
     chain.nodes.forEach((n, i) => {
       rows.push({
@@ -88,7 +90,9 @@ async function saveChains(
           expectedAnswer: b.expectedAnswer,
           // 同じ連鎖の中だけを指させる。自分自身を指すものも切る
           followUpNodeId:
-            b.followUpKey && b.followUpKey !== n.key ? idByKey.get(b.followUpKey) : undefined,
+            b.followUpKey && (indexByKey.get(b.followUpKey) ?? -1) > i
+              ? idByKey.get(b.followUpKey)
+              : undefined,
           exposedWeakness: b.exposedWeakness,
         })),
       });

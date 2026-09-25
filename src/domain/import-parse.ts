@@ -78,7 +78,17 @@ export function parseMaterialsText(text: string): MaterialBlock[] {
       if (/^(出典|出所|資料出所)\s*[:：]/.test(l.normalize("NFKC"))) citationIdx.add(i);
     });
 
-    const citation = nonEmpty.filter((_, i) => citationIdx.has(i)).join("\n");
+    // URL と確認日は別の欄に持つので、出典の文からは取り除く（二重に表示しない）
+    const citation = nonEmpty
+      .filter((_, i) => citationIdx.has(i))
+      .map((l) =>
+        l
+          .replace(new RegExp(URL_PATTERN.source, "g"), "")
+          .replace(/[（(]?\s*(最終)?(確認|閲覧|アクセス)日?\s*[:：]?[^）)]*[）)]?/g, "")
+          .trim(),
+      )
+      .filter(Boolean)
+      .join("\n");
     const body = nonEmpty.filter((_, i) => !citationIdx.has(i)).join("\n");
     const title =
       (urlLineIndex > 0 ? nonEmpty[urlLineIndex - 1] : nonEmpty[0]) ?? `資料${number}`;

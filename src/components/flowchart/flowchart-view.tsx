@@ -404,6 +404,9 @@ function ChainCanvas({
         data: { box: b, active: b.id === activeBoxId, onPath: pathBoxIds.has(b.id) },
         draggable: false,
         connectable: false,
+        // 選択もドラッグも切っていると React Flow が箱のクリックを受け付けなくなる。
+        // 箱の中のボタンで台本を開くので、クリックは通す
+        style: { pointerEvents: "all" as const },
       })),
     [current, activeBoxId, pathBoxIds],
   );

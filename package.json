@@ -11,7 +11,9 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "start:migrate": "npm run db:migrate && next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types tests/*.test.ts"
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "spike:sources": "tsx --conditions=react-server scripts/spike-sources.ts",
+    "smoke": "DEBATE_DATA_DIR=./data/smoke tsx --conditions=react-server scripts/smoke-pipeline.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

@@ -469,7 +469,7 @@ export async function acquireMaterial(
         };
     }
   } catch (err) {
-    console.error("[sources] 取得に失敗しました", input.provesWhat, err);
+    console.warn("[sources] 取得できませんでした:", input.provesWhat, "—", errMessage(err));
     return { kind: "procedure", reasons: [errMessage(err)] };
   }
 }
