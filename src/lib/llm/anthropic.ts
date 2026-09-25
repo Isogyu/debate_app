@@ -11,6 +11,8 @@ import type {
   LlmProvider,
   LlmResult,
   StructuredRequest,
+  WebSearchHit,
+  WebSearchRequest,
 } from "./provider";
 import { LlmConfigError, LlmSchemaError, LlmTruncatedError } from "./provider";
 
@@ -145,6 +147,56 @@ export class AnthropicProvider implements LlmProvider {
     }
 
     return { data: result.data, usage };
+  }
+
+  /**
+   * Claude のサーバー側 Web 検索ツールで URL だけを集める。
+   * allowed_domains で検索範囲を §1-3a の情報源に限定する。
+   * 検索結果ブロックから URL を直接拾い、モデルの文章は使わない。
+   */
+  async searchWeb(req: WebSearchRequest): Promise<LlmResult<WebSearchHit[]>> {
+    const model = DEFAULT_MODEL;
+    let response: Anthropic.Message;
+    try {
+      response = await getClient().messages.create({
+        model,
+        max_tokens: 1024,
+        system:
+          "あなたは資料探しの補助です。与えられた検索語で web_search を使い、関係しそうなページを探してください。回答の文章は不要です。",
+        messages: [{ role: "user", content: `検索語: ${req.query}` }],
+        tools: [
+          {
+            type: "web_search_20250305",
+            name: "web_search",
+            max_uses: req.maxUses ?? 2,
+            allowed_domains: req.allowedDomains,
+          },
+        ],
+      });
+    } catch (err) {
+      throw translateApiError(err);
+    }
+
+    const hits: WebSearchHit[] = [];
+    const seen = new Set<string>();
+    for (const block of response.content) {
+      if (block.type !== "web_search_tool_result") continue;
+      if (!Array.isArray(block.content)) continue; // 検索エラー
+      for (const r of block.content) {
+        if (seen.has(r.url)) continue;
+        seen.add(r.url);
+        hits.push({ url: r.url, title: r.title });
+      }
+    }
+
+    return {
+      data: hits,
+      usage: {
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        model,
+      },
+    };
   }
 }
 

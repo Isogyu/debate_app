@@ -171,3 +171,56 @@ export function whitelistForPrompt(): string {
     "\n",
   );
 }
+
+// ── 資料の自動取得で許す情報源（v6 要件 §1-3a） ─────────────────
+/**
+ * 取得してよいドメイン。新聞・民間調査・一般サイトは取得しない。
+ *
+ *  - 官公庁・統計・国会・法令・判例 … `go.jp` 配下（e-Gov・e-Stat・国会会議録・
+ *    衆参・裁判所・各府省庁・J-STAGE を含む）
+ *  - 論文 … CiNii Research（`nii.ac.jp`）。本文PDFは J-STAGE（go.jp）か、
+ *    CiNii からリンクされた大学の機関リポジトリ（`ac.jp`）の公開PDFに限る
+ */
+export type FetchPurpose = "general" | "paper_pdf";
+
+export function hostOf(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    return u.hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function endsWithDomain(host: string, domain: string): boolean {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
+/** 取得してよいURLか。リダイレクト先にも同じ検査をかける */
+export function isAllowedSourceUrl(
+  url: string,
+  purpose: FetchPurpose = "general",
+): boolean {
+  const host = hostOf(url);
+  if (!host) return false;
+  if (endsWithDomain(host, "go.jp")) return true;
+  if (endsWithDomain(host, "nii.ac.jp")) return true;
+  if (purpose === "paper_pdf" && endsWithDomain(host, "ac.jp")) return true;
+  return false;
+}
+
+/** Claude の Web 検索に渡すドメイン（allowed_domains） */
+export const WEB_SEARCH_DOMAINS: Record<"govt" | "precedent" | "paper", string[]> = {
+  govt: [
+    "go.jp",
+  ],
+  precedent: ["courts.go.jp"],
+  paper: ["jstage.jst.go.jp", "cir.nii.ac.jp"],
+};
+
+/** 登録資料の出典URLが §1-3a の範囲内か（範囲外は注意表示。§3.2） */
+export function isWithinAllowedSources(url: string | undefined): boolean {
+  if (!url) return false;
+  return isAllowedSourceUrl(url, "paper_pdf");
+}
