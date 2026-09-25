@@ -22,6 +22,7 @@ import {
   createJob,
   latestAnalysisJob,
   resumeInterruptedJobs,
+  retryFailed,
   runJob,
 } from "./runner";
 
@@ -87,6 +88,14 @@ export async function createTheme(opts: {
 
 async function runAnalysis(jobId: string, projectId: string, userId: string) {
   const status = await runJob(jobId);
+  if (status === "done") await afterAnalysis(projectId, userId);
+}
+
+/** 分析のやり直し。終わったら、確認関門を選んでいなければそのまま生成に進む */
+export async function retryAnalysisJob(projectId: string, userId: string) {
+  const job = await latestAnalysisJob(projectId);
+  if (!job) throw new RuleError("分析の記録が見つかりませんでした。");
+  const status = await retryFailed(job.id);
   if (status === "done") await afterAnalysis(projectId, userId);
 }
 

@@ -18,7 +18,6 @@ import {
 import type {
   CaseVariant,
   Claim,
-  CrossExamNode,
   SourceRequirement,
 } from "../src/domain/types.ts";
 
@@ -59,7 +58,11 @@ function variant(
     side: "affirmative",
     framework: "租税公平主義",
     approach: "環境変化型",
-    role: "candidate",
+    projectId: "prj_1",
+    origin: "generated",
+    label: "テスト",
+    verified: false,
+    questionsVerified: false,
     sourceRefs: refs,
     debateCase: {
       side: "affirmative",
@@ -170,10 +173,9 @@ test("本文から資料番号を抽出する", () => {
 });
 
 test("質疑フローの循環を検出する", () => {
-  const nodes: CrossExamNode[] = [
+  const nodes = [
     {
       id: "q1",
-      direction: "attack",
       categoryIds: [],
       question: "?",
       purpose: "",
@@ -181,7 +183,6 @@ test("質疑フローの循環を検出する", () => {
     },
     {
       id: "q2",
-      direction: "attack",
       categoryIds: [],
       question: "?",
       purpose: "",
@@ -196,10 +197,9 @@ test("質疑フローの循環を検出する", () => {
 });
 
 test("分岐が合流するだけなら循環ではない", () => {
-  const nodes: CrossExamNode[] = [
+  const nodes = [
     {
       id: "q1",
-      direction: "attack",
       categoryIds: [],
       question: "?",
       purpose: "",
@@ -210,7 +210,6 @@ test("分岐が合流するだけなら循環ではない", () => {
     },
     {
       id: "q2",
-      direction: "attack",
       categoryIds: [],
       question: "?",
       purpose: "",
@@ -218,7 +217,6 @@ test("分岐が合流するだけなら循環ではない", () => {
     },
     {
       id: "q3",
-      direction: "attack",
       categoryIds: [],
       question: "?",
       purpose: "",
@@ -232,10 +230,6 @@ test("引用文があるのに出典がなければ弾く", () => {
   assert.throws(
     () =>
       assertCitationRules({
-        id: "m1",
-        provesWhat: "租税公平主義の定義",
-        sourceType: "book",
-        status: "found",
         quote: "税負担は国民の間に担税力に即して…",
         isModified: false,
       }),
@@ -251,10 +245,6 @@ test("下線を加えたのに注記がなければ弾く", () => {
   assert.throws(
     () =>
       assertCitationRules({
-        id: "m1",
-        provesWhat: "…",
-        sourceType: "book",
-        status: "found",
         quote: "…",
         citation: "金子宏『租税法〔第24版〕』（弘文堂・2021年）88頁",
         isModified: true,

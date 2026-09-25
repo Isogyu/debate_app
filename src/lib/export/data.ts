@@ -1,179 +1,323 @@
 /**
- * エクスポート用データの組み立て（REQUIREMENTS.md §12）
+ * エクスポート用データの組み立て（v6 要件 F12・§1 制約2・5）
  *
- * Word生成と印刷ビューで同じデータを使う。
- * 片方だけ直して食い違う、という事故を防ぐため1箇所にまとめる。
+ * Word と印刷画面で同じデータを使う。片方だけ直して食い違う事故を防ぐため1箇所にまとめる。
+ * 単位は「立論1本」。資料番号は立論ごとに 1..N なので、立論を決めないと参考資料が作れない。
  */
 
 import "server-only";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  blocks,
+  caseStrategies,
   caseVariants,
-  issueCategories,
+  closingTemplates,
+  crossExamNodes,
   projects,
-  rebuttals,
   sourceMaterials,
 } from "@/db/schema";
-import type { DebateCase, LawRef, Side } from "@/domain/types";
-import { assertRefNumbersConsistent, InvariantError } from "@/domain/invariants";
-import { estimateSpeech } from "@/domain/speech";
-import type { CaseVariant } from "@/domain/types";
+import { matchRefMarkers, renderFullText } from "@/domain/case-format";
+import { estimateSpeech, type SpeechEstimate } from "@/domain/speech";
+import {
+  CASE_ORIGIN_LABELS,
+  SIDE_LABELS,
+  SOURCE_TYPE_LABELS,
+  type CaseOrigin,
+  type CaseStrategy,
+  type ClosingPerspective,
+  type DebateCase,
+  type MaterialOrigin,
+  type MaterialStatus,
+  type Side,
+  type SourceProcedure,
+  type SourceType,
+  type StatisticData,
+} from "@/domain/types";
+// 型だけ使う（印刷画面の FlowchartPrint にそのまま渡せる形にそろえる）
+import type { FlowNode } from "@/components/flowchart/flowchart-view";
 
-export interface ExportSourceEntry {
+export type ExportKind = "case" | "sources" | "flowchart" | "closing";
+
+export const EXPORT_KIND_LABELS: Record<ExportKind, string> = {
+  case: "立論",
+  sources: "参考資料",
+  flowchart: "質疑フローチャート",
+  closing: "最終弁論の雛形",
+};
+
+// ── AI表示（§1 制約5） ──────────────────────────────────
+/**
+ * 画面・Word・印刷のどこでも同じ文言を出すための表示ラベル。
+ * needsCheck = 人の確認がまだ（紙面で目立たせる）
+ */
+export interface AiLabel {
+  text: string;
+  needsCheck: boolean;
+}
+
+const VERIFIED: AiLabel = { text: "確認済", needsCheck: false };
+const AI_UNVERIFIED: AiLabel = { text: "AI生成（未確認）", needsCheck: true };
+
+/** 立論本文。登録（自作）の本文はAIが書いていないので表示しない */
+export function caseAiLabel(origin: CaseOrigin, verified: boolean): AiLabel | null {
+  if (origin === "uploaded") return null;
+  return verified ? VERIFIED : AI_UNVERIFIED;
+}
+
+/** 質疑・最終弁論の雛形・特徴と戦い方。登録立論でも中身はAIが作る */
+export function generatedAiLabel(verified: boolean): AiLabel {
+  return verified ? VERIFIED : AI_UNVERIFIED;
+}
+
+/** 資料。取得・コピー・作成手順で文言を分ける。登録した資料はAIの表示を出さない */
+export function materialAiLabel(
+  status: MaterialStatus,
+  origin: MaterialOrigin,
+): AiLabel | null {
+  if (status === "procedure") return { text: "作成手順（未完成）", needsCheck: true };
+  if (origin === "uploaded") return null;
+  if (status === "verified") return VERIFIED;
+  if (origin === "copied") return { text: "コピー（未確認）", needsCheck: true };
+  return { text: "AI取得（未確認）", needsCheck: true };
+}
+
+/** "2025-10-24" → "2025年10月24日"。実物の（最終確認日：…）の書式 */
+export function formatCheckedDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(iso);
+  if (!m) return iso;
+  return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`;
+}
+
+// ── データ ───────────────────────────────────────────────
+export interface ExportSource {
   number: number;
+  /** 参照先の資料が見つからないとき null（不整合として警告する） */
+  materialId: string | null;
   provesWhat: string;
-  citation?: string;
-  quote?: string;
-  modificationNote?: string;
-  status: "needed" | "found" | "verified";
-  sourceType: string;
+  sourceType: SourceType;
+  sourceTypeLabel: string;
+  status: MaterialStatus;
+  origin: MaterialOrigin;
+  aiLabel: AiLabel | null;
+  citation: string | null;
+  url: string | null;
+  lastCheckedAt: string | null;
+  /** 表示用の（最終確認日：YYYY年M月D日）の中身 */
+  lastCheckedLabel: string | null;
+  quote: string | null;
+  modificationNote: string | null;
+  procedure: SourceProcedure | null;
+  statistic: StatisticData | null;
+  withinAllowedSources: boolean;
 }
 
-export interface ExportBlockEntry {
-  categoryNames: string[];
-  opponentArgument: string;
-  summary: string;
-  rebuttalArguments: string[];
-  materialNumbers: number[];
+export interface ExportClosing {
+  own: ClosingPerspective;
+  opponent: ClosingPerspective;
+  aiLabel: AiLabel;
 }
+
+export type ExportStrategy = Omit<CaseStrategy, "variantId" | "verified"> & {
+  aiLabel: AiLabel;
+};
 
 export interface ExportData {
   projectId: string;
-  teamName: string;
-  members: string[];
-  side: Side;
+  themeTitle: string;
   resolution: string;
+  themeArchived: boolean;
+  variantId: string;
+  side: Side;
+  sideLabel: string;
+  origin: CaseOrigin;
+  originLabel: string;
+  label: string;
   debateCase: DebateCase;
-  relatedLaws: LawRef[];
-  sources: ExportSourceEntry[];
-  blocks: ExportBlockEntry[];
-  /** 全資料が人の確認済みか。未確認があればエクスポートにも明記する */
-  allVerified: boolean;
-  /** 番号の不整合や時間超過。空でなければ画面で警告する */
+  /** 本文の表示ラベル。登録立論は null */
+  caseAiLabel: AiLabel | null;
+  speech: SpeechEstimate;
+  sources: ExportSource[];
+  closing: ExportClosing | null;
+  strategy: ExportStrategy | null;
+  questions: FlowNode[];
+  questionsAiLabel: AiLabel;
+  /** 出力前に知らせること。画面で一覧にする */
   warnings: string[];
-  /** 読み上げ時間の見積もり。5分超過は減点対象 */
-  speech: { chars: number; label: string; over: boolean };
 }
 
-export const SIDE_LABELS: Record<Side, string> = {
-  affirmative: "肯定",
-  negative: "否定",
-};
-
+/**
+ * 立論1本分のエクスポート用データ。
+ * projectId を渡すと、別テーマの立論を指定された場合に null を返す（URLの取り違え対策）。
+ */
 export async function buildExportData(
-  projectId: string,
-  variantId?: string,
+  variantId: string,
+  opts: { projectId?: string } = {},
 ): Promise<ExportData | null> {
-  const [project] = await db
+  const [variant] = await db
     .select()
-    .from(projects)
-    .where(eq(projects.id, projectId));
+    .from(caseVariants)
+    .where(eq(caseVariants.id, variantId));
+  if (!variant) return null;
+  if (opts.projectId && variant.projectId !== opts.projectId) return null;
+
+  const [[project], materials, [closing], [strategy], nodes] = await Promise.all([
+    db.select().from(projects).where(eq(projects.id, variant.projectId)),
+    db
+      .select()
+      .from(sourceMaterials)
+      .where(eq(sourceMaterials.projectId, variant.projectId)),
+    db
+      .select()
+      .from(closingTemplates)
+      .where(eq(closingTemplates.variantId, variant.id)),
+    db
+      .select()
+      .from(caseStrategies)
+      .where(eq(caseStrategies.variantId, variant.id)),
+    db
+      .select()
+      .from(crossExamNodes)
+      .where(eq(crossExamNodes.targetVariantId, variant.id))
+      .orderBy(asc(crossExamNodes.chainId), asc(crossExamNodes.chainOrder)),
+  ]);
   if (!project) return null;
 
-  const [variants, materials, categories, blockRows, rebuttalRows] =
-    await Promise.all([
-      db.select().from(caseVariants).where(eq(caseVariants.projectId, projectId)),
-      db.select().from(sourceMaterials).where(eq(sourceMaterials.projectId, projectId)),
-      db.select().from(issueCategories).where(eq(issueCategories.projectId, projectId)),
-      db.select().from(blocks).where(eq(blocks.projectId, projectId)),
-      db.select().from(rebuttals).where(eq(rebuttals.projectId, projectId)),
-    ]);
-
-  // 既定は採用パターン。資料番号はパターン内スコープなので、
-  // どのパターンを出すかで参考資料の番号体系が変わる
-  const variant =
-    variants.find((v) => v.id === variantId) ??
-    variants.find((v) => v.id === project.adoptedCaseId) ??
-    variants.find((v) => v.side === project.mySide) ??
-    variants[0];
-  if (!variant) return null;
-
   const warnings: string[] = [];
-  try {
-    assertRefNumbersConsistent(variant as unknown as CaseVariant);
-  } catch (err) {
-    if (err instanceof InvariantError) warnings.push(err.message);
-    else throw err;
-  }
-
-  // 5分を超える立論は、内容が良くても減点される。出力前に知らせる
-  const speech = estimateSpeech(variant.debateCase.fullText);
-  if (speech.verdict === "over") {
-    warnings.push(
-      `読み上げが${speech.label}です。5分を超えると減点されるため、論点を削ってください。`,
-    );
-  }
-
   const materialById = new Map(materials.map((m) => [m.id, m]));
-  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
-  const rebuttalById = new Map(rebuttalRows.map((r) => [r.id, r]));
-  const numberByMaterialId = new Map(
-    variant.sourceRefs.map((r) => [r.materialId, r.number]),
-  );
 
-  const sources: ExportSourceEntry[] = variant.sourceRefs
+  const sources: ExportSource[] = variant.sourceRefs
     .slice()
     .sort((a, b) => a.number - b.number)
     .map((ref) => {
       const m = materialById.get(ref.materialId);
+      if (!m) {
+        warnings.push(`資料${ref.number}の中身が見つかりません。資料の画面で確認してください。`);
+      }
+      const sourceType = (m?.sourceType ?? "govt_doc") as SourceType;
+      const status: MaterialStatus = m?.status ?? "procedure";
+      const origin: MaterialOrigin = m?.origin ?? "ai_fetched";
       return {
         number: ref.number,
-        provesWhat: m?.provesWhat ?? "",
-        citation: m?.citation ?? undefined,
-        quote: m?.quote ?? undefined,
-        modificationNote: m?.modificationNote ?? undefined,
-        status: (m?.status ?? "needed") as ExportSourceEntry["status"],
-        sourceType: m?.sourceType ?? "book",
+        materialId: m?.id ?? null,
+        provesWhat: m?.provesWhat || ref.description,
+        sourceType,
+        sourceTypeLabel: SOURCE_TYPE_LABELS[sourceType] ?? sourceType,
+        status,
+        origin,
+        aiLabel: materialAiLabel(status, origin),
+        citation: m?.citation ?? null,
+        url: m?.url ?? null,
+        lastCheckedAt: m?.lastCheckedAt ?? null,
+        lastCheckedLabel: formatCheckedDate(m?.lastCheckedAt),
+        quote: m?.quote ?? null,
+        modificationNote: m?.modificationNote ?? null,
+        procedure: m?.procedure ?? null,
+        statistic: m?.statistic ?? null,
+        withinAllowedSources: m?.withinAllowedSources ?? true,
       };
     });
 
+  // 資料番号の対応。登録立論は（資料N）の書き方もあるので両方の形を拾う
+  const fullText = variant.debateCase.fullText || renderFullText(variant.debateCase);
+  const cited = new Set<number>();
+  for (const m of matchRefMarkers(fullText)) cited.add(m.number);
+  const declared = new Set(sources.map((s) => s.number));
+  const noMaterial = [...cited].filter((n) => !declared.has(n)).sort((a, b) => a - b);
+  const notCited = [...declared].filter((n) => !cited.has(n)).sort((a, b) => a - b);
+  if (noMaterial.length > 0) {
+    warnings.push(
+      `立論の本文で参照している資料${noMaterial.join("・")}が、参考資料にありません。`,
+    );
+  }
+  if (notCited.length > 0) {
+    warnings.push(`資料${notCited.join("・")}は、立論の本文で一度も参照されていません。`);
+  }
+
+  // 読み上げ時間（§1 制約1）。超過は減点、30秒以上余るのも損
+  const speech = estimateSpeech(fullText);
+  if (speech.verdict === "over") {
+    warnings.push(`読み上げが${speech.label}です。5分を超えると減点されます。`);
+  } else if (speech.verdict === "short") {
+    warnings.push(`読み上げが${speech.label}です。30秒以上余っています。`);
+  }
+  if (variant.lengthWarning) warnings.push(variant.lengthWarning);
+
+  const unfinished = sources.filter((s) => s.status === "procedure");
+  if (unfinished.length > 0) {
+    warnings.push(
+      `資料${unfinished.map((s) => s.number).join("・")}は未完成です（作成手順のまま）。参考資料には手順として出力されます。`,
+    );
+  }
+  const unchecked = sources.filter((s) => s.aiLabel?.needsCheck && s.status !== "procedure");
+  if (unchecked.length > 0) {
+    warnings.push(
+      `資料${unchecked.map((s) => s.number).join("・")}は、まだ人が確認していません（出力にも「未確認」と表示されます）。`,
+    );
+  }
+  const outside = sources.filter((s) => !s.withinAllowedSources);
+  if (outside.length > 0) {
+    warnings.push(
+      `資料${outside.map((s) => s.number).join("・")}は新聞・民間調査などの資料です。信頼性を突かれやすいので注意してください。`,
+    );
+  }
+  for (const s of sources) {
+    const ng = s.statistic?.comparability.filter((c) => c.ok === false) ?? [];
+    if (ng.length > 0) {
+      warnings.push(
+        `資料${s.number}の数字は、比べる前提（${ng.map((c) => c.aspect).join("・")}）がそろっていません。`,
+      );
+    }
+  }
+  const caseLabel = caseAiLabel(variant.origin, variant.verified);
+  if (caseLabel?.needsCheck) {
+    warnings.push("立論の本文はAIが作ったもので、まだ人が確認していません。");
+  }
+
+  const questions: FlowNode[] = nodes.map((n) => ({
+    id: n.id,
+    chainId: n.chainId,
+    chainOrder: n.chainOrder,
+    targetParagraph: n.targetParagraph,
+    attackPoint: n.attackPoint,
+    question: n.question,
+    purpose: n.purpose,
+    modelAnswer: n.modelAnswer,
+    goal: n.goal ?? undefined,
+    priority: n.priority,
+    origin: n.origin,
+    stuckCount: n.stuckCount,
+    branches: n.branches,
+    setOrder: n.setOrder,
+  }));
+
   return {
-    projectId,
-    teamName: project.teamName ?? "",
-    members: project.members ?? [],
-    side: variant.side,
+    projectId: project.id,
+    themeTitle: project.title,
     resolution: project.resolution,
+    themeArchived: project.status === "archived",
+    variantId: variant.id,
+    side: variant.side,
+    sideLabel: SIDE_LABELS[variant.side],
+    origin: variant.origin,
+    originLabel: CASE_ORIGIN_LABELS[variant.origin],
+    label: variant.label,
     debateCase: variant.debateCase,
-    relatedLaws: project.analysis?.relatedLaws ?? [],
+    caseAiLabel: caseLabel,
+    speech,
     sources,
-    blocks: blockRows
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((b) => ({
-        categoryNames: b.categoryIds
-          .map((id) => categoryNameById.get(id))
-          .filter((n): n is string => !!n),
-        opponentArgument: b.opponentArgument,
-        summary: b.summary,
-        rebuttalArguments: b.myRebuttalIds
-          .map((id) => rebuttalById.get(id)?.argument)
-          .filter((a): a is string => !!a),
-        materialNumbers: b.myMaterialIds
-          .map((id) => numberByMaterialId.get(id))
-          .filter((n): n is number => n !== undefined)
-          .sort((a, b) => a - b),
-      })),
-    allVerified:
-      sources.length > 0 && sources.every((s) => s.status === "verified"),
-    speech: {
-      chars: speech.chars,
-      label: speech.label,
-      over: speech.verdict === "over",
-    },
+    closing: closing
+      ? {
+          own: closing.own,
+          opponent: closing.opponent,
+          aiLabel: generatedAiLabel(closing.verified),
+        }
+      : null,
+    strategy: strategy
+      ? { ...strategy.data, aiLabel: generatedAiLabel(strategy.verified) }
+      : null,
+    questions,
+    questionsAiLabel: generatedAiLabel(variant.questionsVerified),
     warnings,
   };
-}
-
-/** 未登録の資料は出典欄を空欄で出す（§12）。空欄が残っていることを隠さない */
-export const EMPTY_CITATION = "出典：＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿";
-
-/**
- * AI生成物であることをエクスポートにも残す（§6.2 信頼性 / DESIGN §14）。
- * 確認前の内容を確認済みに見せない。
- */
-export function verificationNotice(allVerified: boolean): string {
-  return allVerified
-    ? "※この資料の出典はすべて人が実物を確認済みです。"
-    : "※この文書はAIの生成を含み、出典の実在確認が未完了の資料があります。提出前に必ず確認してください。";
 }

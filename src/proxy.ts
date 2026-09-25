@@ -20,8 +20,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // ログイン画面・到達確認・静的ファイル・オフライン案内は素通しする
+  // ログイン画面・到達確認・静的ファイルは素通しする
   matcher: [
-    "/((?!login|api/health|_next/static|_next/image|favicon.ico|icons|manifest.webmanifest|sw.js|offline).*)",
+    "/((?!login|api/health|_next/static|_next/image|favicon.ico|icons).*)",
   ],
 };

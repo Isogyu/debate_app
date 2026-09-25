@@ -17,6 +17,9 @@ RUN npm run build
 FROM base AS runtime
 ENV NODE_ENV=production
 ENV DEBATE_DATA_DIR=/app/data
+# Word に貼る統計グラフ（resvg で PNG 化）に日本語フォントが要る。ないと文字が□になる
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public

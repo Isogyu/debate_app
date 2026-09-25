@@ -1,7 +1,6 @@
 /**
  * 共通レイアウト部品（DESIGN.md §0）
  *
- * 本番モードはこれを使わない。グローバルナビを出さず画面いっぱいを使う。
  */
 
 import Link from "next/link";
@@ -17,7 +16,7 @@ export function Header() {
             押して404を見せるくらいなら、無い方がよい */}
         <nav className="flex gap-4 text-sm">
           <Link href="/" className="hover:underline">
-            論題一覧
+            現テーマ
           </Link>
         </nav>
       </div>
@@ -55,26 +54,30 @@ export function SideBadge({ side }: { side: "affirmative" | "negative" }) {
       className="rounded px-2 py-0.5 text-xs font-bold text-white"
       style={{ background: aff ? "var(--aff)" : "var(--neg)" }}
     >
-      {aff ? "肯定側" : "否定側"}
+      {aff ? "賛成側" : "反対側"}
+    </span>
+  );
+}
+
+export function OriginBadge({ origin }: { origin: "uploaded" | "generated" }) {
+  return (
+    <span className="rounded border border-[var(--line)] px-2 py-0.5 text-xs">
+      {origin === "uploaded" ? "登録（自作）" : "生成（AI）"}
     </span>
   );
 }
 
 /**
- * AI生成物であることを常に明示する（REQUIREMENTS §6.2 信頼性）。
+ * AI生成物であることを常に明示する（v6 要件 §1 #5）。
  * 生成の不確実性をUIに偽装しない、が設計の原則。
- *
- * ただし表示するだけでは足りない。「どうすれば確認済になるのか」が
- * 分からないとバッジが消えず、ずっと未確認のまま運用されてしまう。
- * 確認する場所（資料要件画面）へのリンクにしている。
  */
 export function VerificationBadge({
   verified,
-  projectId,
+  label = "AI生成（未確認）",
 }: {
   verified: boolean;
-  /** 渡すと、確認する場所への案内リンクになる */
-  projectId?: string;
+  /** 未確認のときの表示（「AI取得（未確認）」など） */
+  label?: string;
 }) {
   if (verified) {
     return (
@@ -83,24 +86,10 @@ export function VerificationBadge({
       </span>
     );
   }
-
-  const label = "AI生成（未確認）";
-  if (!projectId) {
-    return (
-      <span className="rounded border border-[var(--neg)] px-2 py-0.5 text-xs text-[var(--neg)]">
-        {label}
-      </span>
-    );
-  }
-
   return (
-    <Link
-      href={`/projects/${projectId}/sources?status=needed`}
-      title="資料の出典を登録し、実物を確認すると「確認済」になります"
-      className="inline-flex min-h-11 items-center rounded border border-[var(--neg)] px-2 text-xs text-[var(--neg)] underline underline-offset-2"
-    >
-      {label}　確認のしかた →
-    </Link>
+    <span className="rounded border border-[var(--neg)] px-2 py-0.5 text-xs text-[var(--neg)]">
+      {label}
+    </span>
   );
 }
 

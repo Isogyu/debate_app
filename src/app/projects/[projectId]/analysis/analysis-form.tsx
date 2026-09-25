@@ -138,7 +138,7 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
       <section>
         <h2 className="mb-2 font-bold">
           争点カテゴリ{" "}
-          <Term note="立論・反駁・ブロック集・本番モードの検索、すべてがこのカテゴリで結びつきます。本番中に相手の主張を分類する見出しにもなります。">
+          <Term note="質疑を整理する見出しになります。">
             重要
           </Term>
         </h2>
@@ -151,23 +151,23 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
         />
         <p className="mt-1 text-sm text-[var(--muted)]">
           読点か改行で区切ってください。
-          <b>本番モードではこのカテゴリのボタンから返しを探します</b>
-          ので、試合中に迷わない粒度にしてください（4〜8件程度）。
+          質疑の分類に使います
+          。4〜8件程度が目安です。
         </p>
       </section>
 
       <section>
         <h2 className="mb-2 font-bold">
           評価基準の枠組み{" "}
-          <Term note="どの物差しで政策の是非を測るかの枠組みです。肯定側と否定側で別々の枠組みを使うことがあります（例: 租税公平主義 と 税の基本原則）。">
+          <Term note="どの物差しで政策の是非を測るかの枠組みです。賛成側と反対側で別々の枠組みを使うことがあります（例: 租税公平主義 と 税の基本原則）。">
             とは
           </Term>
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {(
             [
-              { key: "aff", label: "肯定側", color: "var(--aff)", fw: data.frameworks.affirmative },
-              { key: "neg", label: "否定側", color: "var(--neg)", fw: data.frameworks.negative },
+              { key: "aff", label: "賛成側", color: "var(--aff)", fw: data.frameworks.affirmative },
+              { key: "neg", label: "反対側", color: "var(--neg)", fw: data.frameworks.negative },
             ] as const
           ).map((side) => (
             <div

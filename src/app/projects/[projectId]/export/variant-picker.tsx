@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 
 /**
- * 資料番号は立論パターンごとに振られるので、
- * どのパターンを出力するかで参考資料の番号体系が変わる。
+ * 出力する立論を選ぶ。資料番号は立論ごとに 1..N なので、
+ * どの立論を選ぶかで参考資料の中身と番号が変わる。
  */
 export function VariantPicker({
   projectId,
@@ -17,14 +17,14 @@ export function VariantPicker({
 }) {
   const router = useRouter();
   return (
-    <label className="mb-5 block text-sm">
-      <span className="mr-2 text-[var(--muted)]">出力する立論パターン:</span>
+    <label className="mb-5 block">
+      <span className="mb-1 block text-sm font-bold">出力する立論</span>
       <select
-        defaultValue={currentId}
+        value={currentId}
         onChange={(e) =>
-          router.push(`/projects/${projectId}/export?variant=${e.target.value}`)
+          router.push(`/projects/${projectId}/export?variant=${encodeURIComponent(e.target.value)}`)
         }
-        className="rounded border border-[var(--line)] p-2"
+        className="min-h-11 w-full rounded border border-[var(--line)] p-2"
       >
         {options.map((o) => (
           <option key={o.id} value={o.id}>
@@ -32,8 +32,8 @@ export function VariantPicker({
           </option>
         ))}
       </select>
-      <span className="ml-2 text-xs text-[var(--muted)]">
-        ※資料番号はパターンごとに振られます
+      <span className="mt-1 block text-xs text-[var(--muted)]">
+        ※資料の番号は立論ごとに振られています
       </span>
     </label>
   );
