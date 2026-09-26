@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { SwitchSideButton } from "@/components/switch-side-button";
+import { DeleteCaseButton } from "@/components/delete-case-button";
 import { and, desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
@@ -101,9 +102,12 @@ export default async function CasePage({
               currentLabel={SIDE_LABELS[variant.side]}
             />
           )}
+          {variant.origin === "uploaded" && !archived && (
+            <DeleteCaseButton projectId={projectId} variantId={variant.id} />
+          )}
           <h1 className="text-xl font-bold">{title}</h1>
         </div>
-        {variant.origin === "generated" && variant.approach && variant.approach !== title && (
+        {variant.origin === "generated" && variant.approach && `${variant.framework}／${variant.approach}` !== title && (
           <p className="-mt-2 mb-4 text-sm text-[var(--muted)]">切り口: {variant.framework}／{variant.approach}</p>
         )}
 
@@ -134,11 +138,11 @@ export default async function CasePage({
           <p className="rounded border border-dashed border-[var(--line)] p-8 text-center text-[var(--muted)]">
             {job?.status === "failed" || job?.status === "partial"
               ? "作成に失敗しました。上の「失敗したところからやり直す」を押してください。"
-              : "作成中です。できたところから表示します（この画面を閉じても続きます）。"}
+              : "作成中です。できたところから表示します。この画面を開いたままにすると止まらずに進みます。閉じると数分後にサーバーが休止して生成も一時停止し、次にアプリを開いたときに続きから再開します。"}
           </p>
         ) : (
           <>
-            <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-[var(--line)]" aria-label="立論の成果物">
+            <nav className="mb-5 flex flex-wrap gap-x-1 border-b border-[var(--line)]" aria-label="立論の成果物">
               {TABS.map(([key, label]) => (
                 <Link
                   key={key}

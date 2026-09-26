@@ -99,7 +99,7 @@ export function JobStatus({ initial, compact = false }: { initial: JobView; comp
       </ul>
       {active && (
         <p className="mt-3 text-sm text-[var(--muted)]">
-          ※資料の取得まで含めて、数分〜十数分かかります。この画面を閉じても生成は続きます。
+          ※資料の取得まで含めて、数分〜十数分かかります。この画面を開いたままにすると止まらずに進みます。閉じると数分後にサーバーが休止して生成も一時停止し、次にアプリを開いたときに続きから再開します。
         </p>
       )}
       {!active && failed > 0 && (
