@@ -284,7 +284,9 @@ async function acquireStatistic(
     }
     inputs.push({
       key: i.key,
-      label: i.label,
+      // 値の名前は統計表の実際の行名を使う。AI が付けた名前は使わない
+      // （行の取り違えや作った説明が資料に混ざらないように。§1-3）
+      label: estatRowLabel(row),
       value: row.value,
       unit: row.unit,
       year: estatRowYear(row) || table.surveyDate,

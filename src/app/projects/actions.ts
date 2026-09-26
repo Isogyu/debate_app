@@ -13,6 +13,7 @@ import type { LawRef, ResolutionAnalysis } from "@/domain/types";
 import { newId, nowIso } from "@/lib/ids";
 import { approveAnalysis, createTheme, retryAnalysisJob, RuleError } from "@/lib/jobs/orchestrate";
 import { log, requireSession } from "@/lib/session";
+import { JobBusyError } from "@/lib/jobs/runner";
 
 export interface FormState {
   error?: string;
@@ -79,7 +80,8 @@ export async function saveAnalysis(_prev: FormState, formData: FormData): Promis
     },
   };
 
-  const categoryNames = splitList(String(formData.get("categories") ?? ""));
+  // 同じ名前が2回あると一意制約で保存に失敗するので、先にまとめる
+  const categoryNames = [...new Set(splitList(String(formData.get("categories") ?? "")))];
   if (categoryNames.length === 0) {
     return { error: "争点カテゴリを1つ以上入力してください。質疑の整理に使います。" };
   }
@@ -124,7 +126,7 @@ export async function retryAnalysis(_prev: FormState, formData: FormData): Promi
   try {
     await retryAnalysisJob(projectId, userId);
   } catch (err) {
-    if (err instanceof RuleError) return { error: err.message };
+    if (err instanceof RuleError || err instanceof JobBusyError) return { error: err.message };
     throw err;
   }
   revalidatePath(`/projects/${projectId}/analysis`);

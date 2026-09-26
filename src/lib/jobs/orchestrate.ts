@@ -6,11 +6,10 @@
  */
 
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   caseVariants,
-  generationJobs,
   projects,
   sourceMaterials,
   uploads,
@@ -18,8 +17,8 @@ import {
 import { MAX_GENERATED_PER_SIDE, type Side } from "@/domain/types";
 import { newId, nowIso } from "@/lib/ids";
 import {
-  activeJobs,
-  createJob,
+  createJobTx,
+  hasActiveJobTx,
   latestAnalysisJob,
   resumeInterruptedJobs,
   retryFailed,
@@ -52,18 +51,19 @@ export async function createTheme(opts: {
   reviewAnalysis: boolean;
   userId: string;
 }): Promise<string> {
-  const current = await activeTheme();
-  if (current && (await activeJobs(current.id)).length > 0) {
-    throw new RuleError(
-      "生成中のため、テーマを変更できません。いま動いている生成が終わってから変更してください。",
-    );
-  }
-
   const projectId = newId("prj");
   const title =
     opts.resolution.length > 40 ? `${opts.resolution.slice(0, 40)}…` : opts.resolution;
-  db.transaction((tx) => {
+  // 「生成中か」の確認・前テーマの保管・新テーマとジョブの作成を1つのトランザクションで行う。
+  // 分けると、確認の直後に始まった生成が過去テーマの上で走ってしまう
+  const jobId = db.transaction((tx) => {
+    const current = tx.select().from(projects).where(eq(projects.status, "active")).get();
     if (current) {
+      if (hasActiveJobTx(tx, { projectId: current.id })) {
+        throw new RuleError(
+          "生成中のため、テーマを変更できません。いま動いている生成が終わってから変更してください。",
+        );
+      }
       tx.update(projects)
         .set({ status: "archived", archivedAt: nowIso(), updatedAt: nowIso() })
         .where(eq(projects.id, current.id))
@@ -79,9 +79,8 @@ export async function createTheme(opts: {
         createdBy: opts.userId,
       })
       .run();
+    return createJobTx(tx, { kind: "analysis", projectId, createdBy: opts.userId });
   });
-
-  const jobId = await createJob({ kind: "analysis", projectId, createdBy: opts.userId });
   background(runAnalysis(jobId, projectId, opts.userId), "論題分析");
   return projectId;
 }
@@ -93,6 +92,7 @@ async function runAnalysis(jobId: string, projectId: string, userId: string) {
 
 /** 分析のやり直し。終わったら、確認関門を選んでいなければそのまま生成に進む */
 export async function retryAnalysisJob(projectId: string, userId: string) {
+  await assertActiveTheme(projectId);
   const job = await latestAnalysisJob(projectId);
   if (!job) throw new RuleError("分析の記録が見つかりませんでした。");
   const status = await retryFailed(job.id);
@@ -108,22 +108,23 @@ async function afterAnalysis(projectId: string, userId: string) {
   await startInitialGeneration(projectId, userId);
 }
 
-/** 各側、まだ生成した立論がなければ1本ずつ作る */
+/**
+ * 各側、まだ生成した立論がなければ1本ずつ作る（§2 F3「最初は各側1本」）。
+ * 承認の二度押しでも2本目ができないよう、「まだ無い」の確認は枠を作るのと同じ
+ * トランザクションで行う。
+ */
 export async function startInitialGeneration(projectId: string, userId: string) {
   for (const side of ["affirmative", "negative"] as Side[]) {
-    const existing = await db
-      .select({ id: caseVariants.id })
-      .from(caseVariants)
-      .where(
-        and(
-          eq(caseVariants.projectId, projectId),
-          eq(caseVariants.side, side),
-          eq(caseVariants.origin, "generated"),
-        ),
-      );
-    if (existing.length === 0) await startGeneration(projectId, side, userId);
+    try {
+      await startGeneration(projectId, side, userId, { onlyIfNone: true });
+    } catch (err) {
+      if (err instanceof RuleError && err.message === ALREADY_STARTED) continue;
+      throw err;
+    }
   }
 }
+
+const ALREADY_STARTED = "この側の最初の立論はすでに生成を始めています。";
 
 // ── 生成 ───────────────────────────────────────────────
 export async function generatedCount(projectId: string, side: Side): Promise<number> {
@@ -142,23 +143,24 @@ export async function generatedCount(projectId: string, side: Side): Promise<num
 
 /**
  * 立論を1本生成する。1テーマにつき各側3本まで（§2 F3）。
- * 数える・枠を作るを1つのトランザクションで行い、二重押しで4本目ができないようにする。
+ * 現テーマかの確認・数える・枠を作る・ジョブを作るを1つのトランザクションで行い、
+ * 二重押しで4本目ができない／ジョブのない枠が残らないようにする。
  */
 export async function startGeneration(
   projectId: string,
   side: Side,
   userId: string,
+  opts: { onlyIfNone?: boolean } = {},
 ): Promise<string> {
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-  if (!project || project.status !== "active") {
-    throw new RuleError("現テーマではないため、生成できません。");
-  }
-  if (!project.analysis) {
-    throw new RuleError("論題の分析が終わってから生成できます。");
-  }
-
   const variantId = newId("var");
-  db.transaction((tx) => {
+  const jobId = db.transaction((tx) => {
+    const project = tx.select().from(projects).where(eq(projects.id, projectId)).get();
+    if (!project || project.status !== "active") {
+      throw new RuleError("現テーマではないため、生成できません。");
+    }
+    if (!project.analysis) {
+      throw new RuleError("論題の分析が終わってから生成できます。");
+    }
     const count = tx
       .select({ id: caseVariants.id })
       .from(caseVariants)
@@ -170,6 +172,7 @@ export async function startGeneration(
         ),
       )
       .all().length;
+    if (opts.onlyIfNone && count > 0) throw new RuleError(ALREADY_STARTED);
     if (count >= MAX_GENERATED_PER_SIDE) {
       throw new RuleError(
         `生成できる立論は1テーマにつき各側${MAX_GENERATED_PER_SIDE}本までです。`,
@@ -194,15 +197,19 @@ export async function startGeneration(
         createdBy: userId,
       })
       .run();
+    return createJobTx(tx, { kind: "generate", projectId, variantId, createdBy: userId });
   });
 
-  const jobId = await createJob({ kind: "generate", projectId, variantId, createdBy: userId });
   background(runJob(jobId), "立論の生成");
   return variantId;
 }
 
 /** 分析の確認関門を通したあと（§3.3 任意の確認関門） */
 export async function approveAnalysis(projectId: string, userId: string) {
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+  if (!project || project.status !== "active") {
+    throw new RuleError("現テーマではないため、生成できません。");
+  }
   await startInitialGeneration(projectId, userId);
 }
 
@@ -219,13 +226,13 @@ export async function startImport(opts: {
   materialsFilePath?: string;
   materialsText?: string;
 }): Promise<string> {
-  const [project] = await db.select().from(projects).where(eq(projects.id, opts.projectId));
-  if (!project || project.status !== "active") {
-    throw new RuleError("現テーマではないため、登録できません。");
-  }
   const variantId = newId("var");
   const uploadId = newId("upl");
-  db.transaction((tx) => {
+  const jobId = db.transaction((tx) => {
+    const project = tx.select().from(projects).where(eq(projects.id, opts.projectId)).get();
+    if (!project || project.status !== "active") {
+      throw new RuleError("現テーマではないため、登録できません。");
+    }
     tx.insert(caseVariants)
       .values({
         id: variantId,
@@ -264,13 +271,13 @@ export async function startImport(opts: {
         createdBy: opts.userId,
       })
       .run();
-  });
-  const jobId = await createJob({
-    kind: "import",
-    projectId: opts.projectId,
-    variantId,
-    params: { uploadId },
-    createdBy: opts.userId,
+    return createJobTx(tx, {
+      kind: "import",
+      projectId: opts.projectId,
+      variantId,
+      params: { uploadId },
+      createdBy: opts.userId,
+    });
   });
   background(runJob(jobId), "登録の取り込み");
   return variantId;
@@ -282,26 +289,19 @@ export async function startMoreQuestions(
   claimId: string,
   userId: string,
 ): Promise<string> {
-  const [variant] = await db.select().from(caseVariants).where(eq(caseVariants.id, variantId));
-  if (!variant) throw new RuleError("立論が見つかりませんでした。");
-  const running = await db
-    .select()
-    .from(generationJobs)
-    .where(
-      and(
-        eq(generationJobs.variantId, variantId),
-        inArray(generationJobs.status, ["queued", "running"]),
-      ),
+  const jobId = db.transaction((tx) => {
+    const variant = assertEditableVariantTx(tx, variantId);
+    const claimExists = variant.debateCase.sections.some((s) =>
+      s.subsections.some((c) => c.id === claimId),
     );
-  if (running.length > 0) {
-    throw new RuleError("この立論はいま生成中です。終わってから追加してください。");
-  }
-  const jobId = await createJob({
-    kind: "more_questions",
-    projectId: variant.projectId,
-    variantId,
-    params: { claimId },
-    createdBy: userId,
+    if (!claimExists) throw new RuleError("指定した段落が見つかりませんでした。");
+    return createJobTx(tx, {
+      kind: "more_questions",
+      projectId: variant.projectId,
+      variantId,
+      params: { claimId },
+      createdBy: userId,
+    });
   });
   background(runJob(jobId), "質疑の追加");
   return jobId;
@@ -317,50 +317,109 @@ export async function copyMaterialToCase(opts: {
   targetVariantId: string;
   userId: string;
 }) {
-  const [material] = await db
-    .select()
-    .from(sourceMaterials)
-    .where(eq(sourceMaterials.id, opts.materialId));
-  if (!material) throw new RuleError("資料が見つかりませんでした。");
-  const [target] = await db
-    .select()
-    .from(caseVariants)
-    .where(eq(caseVariants.id, opts.targetVariantId));
-  if (!target) throw new RuleError("コピー先の立論が見つかりませんでした。");
-  const [project] = await db.select().from(projects).where(eq(projects.id, target.projectId));
-  if (project?.status !== "active") throw new RuleError("コピー先は現テーマの立論にしてください。");
+  return db.transaction((tx) => {
+    const material = tx
+      .select()
+      .from(sourceMaterials)
+      .where(eq(sourceMaterials.id, opts.materialId))
+      .get();
+    if (!material) throw new RuleError("資料が見つかりませんでした。");
+    // 生成中の立論は、ジョブが開始時の資料一覧で書き戻すのでコピーが消える
+    const target = assertEditableVariantTx(tx, opts.targetVariantId);
+    const source = tx.select().from(projects).where(eq(projects.id, material.projectId)).get();
+    if (!source || source.status !== "archived") {
+      throw new RuleError("コピーできるのは過去テーマの資料です。");
+    }
 
-  const newMaterialId = newId("mat");
-  const nextNumber = Math.max(0, ...target.sourceRefs.map((r) => r.number)) + 1;
-  await db.insert(sourceMaterials).values({
-    ...material,
-    id: newMaterialId,
-    projectId: target.projectId,
-    status: material.status === "procedure" ? "procedure" : "unverified",
-    origin: "copied",
-    copiedFromMaterialId: material.id,
-    verifiedAt: null,
+    const newMaterialId = newId("mat");
+    const nextNumber = Math.max(0, ...target.sourceRefs.map((r) => r.number)) + 1;
+    tx.insert(sourceMaterials)
+      .values({
+        ...material,
+        id: newMaterialId,
+        projectId: target.projectId,
+        status: material.status === "procedure" ? "procedure" : "unverified",
+        origin: "copied",
+        copiedFromMaterialId: material.id,
+        verifiedAt: null,
+      })
+      .run();
+    tx.update(caseVariants)
+      .set({
+        sourceRefs: [
+          ...target.sourceRefs,
+          {
+            id: newId("ref"),
+            number: nextNumber,
+            materialId: newMaterialId,
+            supportsClaimIds: [],
+            categoryIds: [],
+            description: "過去テーマからコピーした資料",
+            searchKeywords: [],
+            suggestedSourceIds: [],
+            formatHint: material.statistic ? "chart" : "quote",
+          },
+        ],
+      })
+      .where(eq(caseVariants.id, target.id))
+      .run();
+    return nextNumber;
   });
-  await db
-    .update(caseVariants)
-    .set({
-      sourceRefs: [
-        ...target.sourceRefs,
-        {
-          id: newId("ref"),
-          number: nextNumber,
-          materialId: newMaterialId,
-          supportsClaimIds: [],
-          categoryIds: [],
-          description: "過去テーマからコピーした資料",
-          searchKeywords: [],
-          suggestedSourceIds: [],
-          formatHint: material.statistic ? "chart" : "quote",
-        },
-      ],
-    })
-    .where(eq(caseVariants.id, target.id));
-  return nextNumber;
+}
+
+// ── 編集できるかの確認 ─────────────────────────────────
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * 立論を変更してよいか（トランザクション内・同期）。
+ *  - 現テーマの立論であること（過去テーマは閲覧のみ。§2 F1）
+ *  - その立論のジョブが動いていないこと（動いていると、ジョブの書き戻しで編集が消える）
+ *  - projectId を渡した場合、その立論がそのテーマのものであること
+ */
+export function assertEditableVariantTx(
+  tx: Tx,
+  variantId: string,
+  opts: { projectId?: string; allowRunningJob?: boolean } = {},
+) {
+  const variant = tx.select().from(caseVariants).where(eq(caseVariants.id, variantId)).get();
+  if (!variant || (opts.projectId && variant.projectId !== opts.projectId)) {
+    throw new RuleError("立論が見つかりませんでした。");
+  }
+  const project = tx.select().from(projects).where(eq(projects.id, variant.projectId)).get();
+  if (!project || project.status !== "active") {
+    throw new RuleError("過去テーマの立論は閲覧のみです。");
+  }
+  if (!opts.allowRunningJob && hasActiveJobTx(tx, { variantId })) {
+    throw new RuleError("この立論はいま生成中です。終わってから操作してください。");
+  }
+  return variant;
+}
+
+export async function assertEditableVariant(
+  variantId: string,
+  opts: { projectId?: string; allowRunningJob?: boolean } = {},
+) {
+  return db.transaction((tx) => assertEditableVariantTx(tx, variantId, opts));
+}
+
+/** 資料を変更してよいか。資料の属するテーマが現テーマであること */
+export async function assertEditableMaterial(materialId: string) {
+  const [material] = await db.select().from(sourceMaterials).where(eq(sourceMaterials.id, materialId));
+  if (!material) throw new RuleError("資料が見つかりませんでした。");
+  const [project] = await db.select().from(projects).where(eq(projects.id, material.projectId));
+  if (!project || project.status !== "active") {
+    throw new RuleError("過去テーマの資料は閲覧のみです。");
+  }
+  return material;
+}
+
+/** テーマを変更してよいか（分析の修正・承認など） */
+export async function assertActiveTheme(projectId: string) {
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+  if (!project || project.status !== "active") {
+    throw new RuleError("過去テーマは閲覧のみです。");
+  }
+  return project;
 }
 
 // ── 起動時の再開 ───────────────────────────────────────

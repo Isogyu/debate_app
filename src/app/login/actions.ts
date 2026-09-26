@@ -57,7 +57,25 @@ export async function login(
 
   await log(userId, "login", displayName);
   // オープンリダイレクト防止。自サイト内のパスだけ許す
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+  redirect(safeNextPath(next));
+}
+
+/**
+ * ログイン後の戻り先。自サイト内のパスだけ許す（オープンリダイレクト防止）。
+ * "//evil.com" や "/\\evil.com"（ブラウザが // と同じに扱う）を弾くため、
+ * URL として解釈した結果が同じオリジンかどうかで判定する。
+ */
+function safeNextPath(next: string): string {
+  if (!next.startsWith("/")) return "/";
+  try {
+    const base = "http://localhost";
+    const url = new URL(next, base);
+    if (url.origin !== base) return "/";
+    if (/[\\\r\n\t]/.test(next)) return "/";
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return "/";
+  }
 }
 
 export async function logout(): Promise<void> {

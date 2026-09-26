@@ -27,6 +27,14 @@ function stamp(): string {
 function backup() {
   if (!fs.existsSync(DB_PATH)) return;
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  // WAL に残っている直近の書き込みを本体へ戻してから写す。
+  // そのままコピーすると、直近の内容が欠けたバックアップになる
+  const conn = new Database(DB_PATH);
+  try {
+    conn.pragma("wal_checkpoint(TRUNCATE)");
+  } finally {
+    conn.close();
+  }
   fs.copyFileSync(DB_PATH, path.join(BACKUP_DIR, `debate-${stamp()}.db`));
 
   // 直近30世代だけ残す（v5 の退避分は数えない。消えると戻せない）

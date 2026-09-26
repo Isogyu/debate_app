@@ -126,6 +126,36 @@ function dropSentences(text: string, bad: (s: string) => boolean): string {
   return splitSentences(text).filter((s) => !bad(s)).join("");
 }
 
+/** 数字の表記だけを消す。文を落とすと空になってしまう短い文（主張・見出し）用 */
+function removeNumberTokens(text: string, location: string): string {
+  let out = text;
+  for (const m of extractNumbers(text, location)) out = out.replace(m.text, "");
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+/**
+ * 出典に結びつかない数字を含む文を落とす（生成立論用。v6 要件 §1-9）。
+ * 段落の再生成（画面の「この部分を再生成」）でも同じ関所を通す。
+ */
+export function stripUnsourcedNumbers(
+  text: string,
+  location: string,
+  refs: SourceRequirement[],
+  materials: Map<string, MaterialRow>,
+): { text: string; removed: Classified[] } {
+  if (!text) return { text, removed: [] };
+  const removed = extractNumbers(text, location)
+    .map((m) => classify(m, refs, materials))
+    .filter((c) => !c.sourced);
+  if (removed.length === 0) return { text, removed };
+  const bad = (sentence: string) =>
+    extractNumbers(sentence, location).some((m) => !classify(m, refs, materials).sourced);
+  const dropped = dropSentences(text, bad);
+  return { text: dropped || removeNumberTokens(text, location), removed };
+}
+
+export { loadMaterialsFor };
+
 export async function stepNumberCheck(ctx: StepContext) {
   const meter = new UsageMeter();
   const variant = await loadVariant(ctx.variantId);
@@ -224,8 +254,35 @@ export async function stepNumberCheck(ctx: StepContext) {
       }
       sections.push({ ...s, subsections: subs });
     }
+    // Ⅰ主張・Ⅲ結論・見出しにある出典のない数字も残さない
+    const frame = (text: string, location: string, claimId?: string) => {
+      const r = stripUnsourcedNumbers(text, location, refs, materials);
+      for (const u of r.removed) {
+        findings.push({
+          aspect: "source",
+          severity: "high",
+          location,
+          claimId,
+          value: u.mention.text,
+          message: `出典のない数字でした。${u.reason}`,
+          resolution: "この数字を本文から取り除きました。",
+        });
+      }
+      if (r.text !== text) changed = true;
+      return r.text;
+    };
+    const claim = frame(debateCase.claim, "Ⅰ. 主張");
+    const conclusion = frame(debateCase.conclusion, "Ⅲ. 結論");
+    const titled = sections.map((sec, i) => ({
+      ...sec,
+      title: frame(sec.title, `${i + 1}. 見出し`),
+      subsections: sec.subsections.map((c, j) => ({
+        ...c,
+        title: frame(c.title, `（${j + 1}）見出し`, c.id),
+      })),
+    }));
     if (changed) {
-      debateCase = { ...debateCase, sections };
+      debateCase = { ...debateCase, claim, conclusion, sections: titled };
       debateCase.fullText = renderFullText(debateCase);
     }
   }

@@ -93,7 +93,10 @@ export function PracticeClient({ projectId, cases }: { projectId: string; cases:
               {selected && (
                 // 立論を替えたら、測った速さやペースメーカーの経過もリセットする
                 <div key={selected.id}>
-                  <SpeechMeter text={selected.debateCase.fullText} />
+                  <SpeechMeter
+                    text={selected.debateCase.fullText}
+                    adviseFixes={selected.origin === "generated"}
+                  />
                   <p className="mb-2 text-sm text-[var(--muted)]">
                     原稿を表示し、経過時間から「いまここまで来ているべき」位置を光らせます。
                     音声認識は使いません（誤った指示で早口になると減点されるため）。

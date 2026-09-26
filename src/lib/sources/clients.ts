@@ -39,7 +39,14 @@ export async function fetchLawArticle(
     await fetchJson(`${EGOV}/laws?law_title=${encodeURIComponent(lawName)}&limit=20`),
   );
   // 「所得税法施行令」などを誤って拾わないよう、題名の完全一致を優先する
-  const law = list.find((l) => l.title === lawName) ?? list.find((l) => l.title.startsWith(lawName));
+  // 法令名は完全一致を優先する。前方一致は1件に絞れるときだけ使い、
+  // 「所得税法施行令」「所得税法施行規則」のような別の法令を取り違えない
+  const norm = (t: string) => t.normalize("NFKC").replace(/\s/g, "");
+  const exact = list.find((l) => norm(l.title) === norm(lawName));
+  const prefixed = list.filter(
+    (l) => norm(l.title).startsWith(norm(lawName)) && !/(施行令|施行規則|規則|省令)$/.test(l.title),
+  );
+  const law = exact ?? (prefixed.length === 1 ? prefixed[0] : undefined);
   if (!law) return null;
   const parsed = parseEgovArticle(
     await fetchJson(

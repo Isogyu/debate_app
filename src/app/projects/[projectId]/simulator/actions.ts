@@ -8,7 +8,7 @@
  * 終了時の講評と同じリクエストで、練習結果を質疑データへ反映する（§4.3）。
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -39,7 +39,8 @@ import {
 import { getLlmProvider } from "@/lib/llm/anthropic";
 import { LlmConfigError, LlmSchemaError, type LlmUsage } from "@/lib/llm/provider";
 import * as PP from "@/lib/llm/prompts-practice";
-import { paragraphsOf } from "@/lib/jobs/common";
+import { allowedNumbersFor, paragraphsOf } from "@/lib/jobs/common";
+import { guardText, hasDisallowedNumber } from "@/domain/number-guard";
 import { recomputeEightMinuteSet } from "@/lib/jobs/steps-questions";
 import { newId, nowIso } from "@/lib/ids";
 import { log, requireSession } from "@/lib/session";
@@ -322,7 +323,10 @@ async function reflect(
   const paragraphs = paragraphsOf(userVariant).map((p) => ({ ...p, title: titles.get(p.claimId) }));
 
   const addedNodeIds: string[] = [];
+  // 練習から足す質問・回答にも、出典のない数字を入れない（§1-9）
+  const allowed = await allowedNumbersFor(userVariant);
   for (const q of newQuestions) {
+    if (hasDisallowedNumber(q.question, allowed)) continue;
     const k = questionKey(q.question);
     if (!k || seen.has(k)) continue;
     seen.add(k);
@@ -340,7 +344,7 @@ async function reflect(
       attackPoint: q.attackPoint,
       question: q.question,
       purpose: "質疑練習で相手（AI）が出した質問",
-      modelAnswer: q.modelAnswer,
+      modelAnswer: guardText(q.modelAnswer, allowed).text,
       goal: null,
       priority: 3,
       origin: "practice",
@@ -367,11 +371,21 @@ export async function finishPractice(
   const loaded = await loadOwnSession(sessionId, userId);
   if (!loaded.session) return { error: loaded.error };
   const session = loaded.session;
-  // 二重押しで stuckCount が2回増えないように
   if (session.finishedAt) redirect(`/projects/${session.projectId}/simulator?session=${sessionId}`);
 
   if (session.turns.filter((t) => t.speaker === "user").length === 0) {
     return { error: "まだ発言がありません。何度かやり取りしてから終えてください。" };
+  }
+
+  // 二重押しで stuckCount が2回増えないように、終了を1文で取る。
+  // 講評に失敗したら戻して、もう一度押せるようにする
+  const claimed = await db
+    .update(practiceSessions)
+    .set({ finishedAt: nowIso() })
+    .where(and(eq(practiceSessions.id, sessionId), isNull(practiceSessions.finishedAt)))
+    .returning({ id: practiceSessions.id });
+  if (claimed.length === 0) {
+    redirect(`/projects/${session.projectId}/simulator?session=${sessionId}`);
   }
 
   try {
@@ -430,12 +444,19 @@ export async function finishPractice(
       notJudged: NOT_JUDGED,
     };
 
+    const closingAllowed = [
+      ...(await allowedNumbersFor(ctx.userVariant)),
+      ...(await allowedNumbersFor(ctx.aiVariant)),
+    ];
     let reflection: PracticeReflection = {
       stuckNodeIds: [],
       addedNodeIds: [],
-      closingExample: data.closingExample,
+      closingExample: data.closingExample
+        ? guardText(data.closingExample, closingAllowed).text
+        : undefined,
     };
-    if (session.mode === "defense") {
+    // 過去テーマは閲覧のみ。練習はできるが、質疑データへの反映はしない（§2 F1）
+    if (session.mode === "defense" && ctx.project.status === "active") {
       try {
         const r = await reflect(
           session,
@@ -455,6 +476,10 @@ export async function finishPractice(
       .set({ feedback, reflection, finishedAt: nowIso() })
       .where(eq(practiceSessions.id, sessionId));
   } catch (err) {
+    await db
+      .update(practiceSessions)
+      .set({ finishedAt: null })
+      .where(eq(practiceSessions.id, sessionId));
     return { error: toUserMessage(err), sessionId, turns: session.turns };
   }
 

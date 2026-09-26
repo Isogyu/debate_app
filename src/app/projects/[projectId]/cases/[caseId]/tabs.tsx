@@ -13,6 +13,7 @@ import type {
 import { VerifyToggle } from "@/components/verify-toggle";
 import { statisticChartSvg } from "@/lib/export/chart-svg";
 import { formatNumber } from "@/domain/statistics";
+import { countSpeechChars } from "@/domain/speech";
 import {
   ATTACK_POINT_LABELS,
   BRANCH_KIND_LABELS,
@@ -117,6 +118,12 @@ export function SourcesTab({
                   </p>
                 )}
                 {m.lastCheckedAt && <p>（最終確認日：{formatDate(m.lastCheckedAt)}）</p>}
+                {m.origin === "copied" && isStale(m.lastCheckedAt) && (
+                  <p className="rounded bg-[#b45309]/10 p-2 text-[#b45309]">
+                    過去テーマからコピーした資料で、最終確認日から時間がたっています。
+                    出典を開いて内容が変わっていないか確認し、最終確認日を更新してください（§3.5）。
+                  </p>
+                )}
                 {m.statistic ? (
                   <StatisticView statistic={m.statistic} />
                 ) : (
@@ -349,7 +356,8 @@ export function QuestionsTab({
         paragraphs.map((p) => {
           const list = roots
             .filter((r) => r.targetClaimId === p.claimId)
-            .sort((a, b) => b.priority - a.priority);
+            // 練習で詰まった質問は、同じ優先度の中で前に出す（§4.3）
+            .sort((a, b) => b.priority - a.priority || b.stuckCount - a.stuckCount);
           return (
             <section key={p.claimId} className="mb-6">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -472,12 +480,30 @@ function ClosingSection({ title, p }: { title: string; p: ClosingPerspective }) 
       <div className="space-y-3">
         {p.examples.map((e, i) => (
           <details key={i} className="rounded border border-[var(--line)] p-3">
-            <summary className="cursor-pointer text-sm font-bold">{e.pathLabel}</summary>
+            <summary className="cursor-pointer text-sm font-bold">
+              {e.pathLabel}
+              <ClosingLength text={e.text} />
+            </summary>
             <p className="mt-2 whitespace-pre-wrap leading-7">{e.text}</p>
           </details>
         ))}
       </div>
     </section>
+  );
+}
+
+/** 記入例の読み上げ字数。1分≒320字（最終弁論は1分・30秒以上余っても減点） */
+function ClosingLength({ text }: { text: string }) {
+  const chars = countSpeechChars(text);
+  const tooLong = chars > 330;
+  const tooShort = chars < 160;
+  return (
+    <span
+      className="ml-2 text-xs font-normal"
+      style={{ color: tooLong || tooShort ? "var(--neg)" : "var(--muted)" }}
+    >
+      （約{chars}字{tooLong ? "・1分を超える恐れ" : tooShort ? "・30秒以上余る恐れ" : ""}）
+    </span>
   );
 }
 
@@ -529,4 +555,12 @@ export function StrategyTab({ strategy }: { strategy: typeof caseStrategies.$inf
       <List title="攻め筋" items={s.howToAttack} />
     </div>
   );
+}
+
+/** 最終確認日が古いか（90日以上前、または不明） */
+function isStale(date: string | null): boolean {
+  if (!date) return true;
+  const t = Date.parse(date);
+  if (Number.isNaN(t)) return true;
+  return Date.now() - t > 90 * 24 * 60 * 60 * 1000;
 }

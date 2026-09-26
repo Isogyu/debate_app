@@ -102,15 +102,24 @@ export function estimateSpeech(
   charsPerMinute: number = DEFAULT_CHARS_PER_MINUTE,
 ): SpeechEstimate {
   const chars = countSpeechChars(text);
-  const seconds = estimateSeconds(chars, charsPerMinute);
-  const ratio = seconds / SPEECH_LIMIT_SECONDS;
+  // 判定は丸める前の秒数で行う。丸めた値で判定すると、1,601字（300.19秒）が
+  // 「5分ちょうど＝適正」、1,441字（270.19秒）が「余りすぎ」と逆に出る
+  const exactSeconds = (chars / charsPerMinute) * 60;
+  const ratio = exactSeconds / SPEECH_LIMIT_SECONDS;
 
   const verdict: SpeechVerdict =
-    seconds > SPEECH_LIMIT_SECONDS
+    exactSeconds > SPEECH_LIMIT_SECONDS
       ? "over"
-      : seconds <= MIN_ACCEPTABLE_SECONDS
+      : exactSeconds <= MIN_ACCEPTABLE_SECONDS
         ? "short"
         : "ok";
+  // 表示用の秒数は判定と食い違わないように丸める（超過なら切り上げ、余りなら切り捨て）
+  const seconds =
+    verdict === "over"
+      ? Math.ceil(exactSeconds)
+      : verdict === "short"
+        ? Math.floor(exactSeconds)
+        : Math.min(SPEECH_LIMIT_SECONDS, Math.max(MIN_ACCEPTABLE_SECONDS + 1, estimateSeconds(chars, charsPerMinute)));
 
   const label =
     verdict === "over"

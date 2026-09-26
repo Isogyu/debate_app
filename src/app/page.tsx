@@ -25,7 +25,7 @@ export default async function Home() {
     .from(projects)
     .where(eq(projects.status, "archived"))
     .orderBy(desc(projects.archivedAt))
-    .limit(20);
+    .limit(200);
 
   return (
     <>

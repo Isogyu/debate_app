@@ -26,12 +26,14 @@ import {
   type CrossExamNode,
 } from "@/domain/types";
 import { closingSchema, crossExamChainsSchema, strategySchema } from "@/domain/schemas";
+import { guardText, hasDisallowedNumber } from "@/domain/number-guard";
 import type { z } from "zod";
 import { getLlmProvider } from "@/lib/llm/anthropic";
 import { SYSTEM_BASE } from "@/lib/llm/prompts";
 import * as PQ from "@/lib/llm/prompts-questions";
 import { newId } from "@/lib/ids";
 import {
+  allowedNumbersFor,
   categoryIdsByName,
   loadCategories,
   loadMaterialsFor,
@@ -61,7 +63,15 @@ async function saveChains(
   origin: "generated" | "practice",
 ): Promise<number> {
   const rows: (CrossExamNode & { createdAt?: string })[] = [];
+  const allowed = await allowedNumbersFor(variant);
+  const g = (t: string) => guardText(t, allowed).text;
   for (const chain of output.chains) {
+    // 質問そのものに出典のない数字があれば、その連鎖ごと使わない（v6 要件 §1-9）。
+    // 回答・狙いの側は、その数字を含む文だけを落とす
+    if (chain.nodes.some((n) => hasDisallowedNumber(n.question, allowed))) {
+      console.warn("[questions] 出典のない数字を含む質問を除きました:", chain.nodes[0]?.question);
+      continue;
+    }
     const chainId = newId("chn");
     const idByKey = new Map(chain.nodes.map((n) => [n.key, newId("cx")]));
     // 追及は連鎖の中で「後ろのノード」へだけ進める。前に戻る指定は循環のもとなので切る
@@ -78,22 +88,22 @@ async function saveChains(
         targetParagraph: paragraph.label,
         attackPoint: chain.attackPoint,
         question: n.question,
-        purpose: n.purpose,
-        modelAnswer: n.modelAnswer,
-        goal: i === 0 ? chain.goal : undefined,
+        purpose: g(n.purpose),
+        modelAnswer: g(n.modelAnswer),
+        goal: i === 0 && chain.goal ? g(chain.goal) : undefined,
         priority: chain.priority,
         origin,
         stuckCount: 0,
         categoryIds,
         branches: n.branches.map((b) => ({
           kind: b.kind,
-          expectedAnswer: b.expectedAnswer,
+          expectedAnswer: g(b.expectedAnswer),
           // 同じ連鎖の中だけを指させる。自分自身を指すものも切る
           followUpNodeId:
             b.followUpKey && (indexByKey.get(b.followUpKey) ?? -1) > i
               ? idByKey.get(b.followUpKey)
               : undefined,
-          exposedWeakness: b.exposedWeakness,
+          exposedWeakness: b.exposedWeakness ? g(b.exposedWeakness) : undefined,
         })),
       });
     });
@@ -223,7 +233,11 @@ export async function stepCrossExam(ctx: StepContext) {
       await saveChains(variant, p, out, "generated");
     }
   };
-  await Promise.all([worker(), worker()]);
+  // 片方が失敗しても、もう片方が書き終えるのを待つ。先に失敗を返すと、
+  // 自動リトライの「作り直し（削除）」と残ったワーカーの書き込みが重なり、質疑が混ざる
+  const results = await Promise.allSettled([worker(), worker()]);
+  const failure = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failure) throw failure.reason;
 
   // 網羅の検査。段落×攻撃点で抜けたマスを1回だけ埋めに行く
   const nodes = await loadNodes(variant.id);
@@ -317,10 +331,14 @@ export async function stepClosing(ctx: StepContext) {
   );
 
   const valid = new Set(chains.map((c) => c.chainId));
+  const allowed = await allowedNumbersFor(variant);
+  const g = (t: string) => guardText(t, allowed).text;
   const clean = (p: typeof data.own) => ({
     ...p,
+    frame: g(p.frame),
     examples: p.examples.map((e) => ({
       ...e,
+      text: g(e.text),
       chainId: e.chainId && valid.has(e.chainId) ? e.chainId : undefined,
     })),
   });
@@ -368,11 +386,25 @@ export async function stepStrategy(ctx: StepContext) {
     }),
   );
 
+  const allowed = await allowedNumbersFor(variant);
+  const g = (t: string) => guardText(t, allowed).text;
+  const keep = (t: string) => !hasDisallowedNumber(t, allowed);
+  const guarded = {
+    ...data,
+    summary: g(data.summary),
+    strengths: data.strengths.filter(keep),
+    weaknesses: data.weaknesses.map((w) => ({ point: g(w.point), why: g(w.why) })).filter((w) => w.point),
+    defend: data.defend.filter(keep),
+    neverConcede: data.neverConcede.filter(keep),
+    winningPath: g(data.winningPath),
+    howToAttack: data.howToAttack.filter(keep),
+  };
+
   await db.delete(caseStrategies).where(eq(caseStrategies.variantId, variant.id));
   await db.insert(caseStrategies).values({
     variantId: variant.id,
     projectId: variant.projectId,
-    data,
+    data: guarded,
   });
   return meter.total;
 }

@@ -51,7 +51,7 @@ export async function ThemeView({ projectId }: { projectId: string }) {
     db.select().from(generationJobs).where(eq(generationJobs.projectId, projectId)).orderBy(desc(generationJobs.createdAt)),
     db.select({ variantId: crossExamNodes.targetVariantId }).from(crossExamNodes).where(eq(crossExamNodes.projectId, projectId)),
     db.select().from(uploads).where(eq(uploads.projectId, projectId)),
-    db.select().from(projects).where(and(eq(projects.status, "archived"))).orderBy(desc(projects.archivedAt)).limit(20),
+    db.select().from(projects).where(and(eq(projects.status, "archived"))).orderBy(desc(projects.archivedAt)).limit(200),
   ]);
 
   const latestByVariant = new Map<string, (typeof jobs)[number]>();

@@ -120,11 +120,12 @@ function sliceLines(lines: string[], [a, b]: [number, number]): string {
   if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < a || b >= lines.length) {
     throw new ImportStructureError(`行の範囲が不正です（${a}〜${b}）`);
   }
+  // 段落の中の改行は残す（元の原稿の段落分けを崩さない）
   return lines
     .slice(a, b + 1)
     .map((l) => l.trim())
     .filter(Boolean)
-    .join("");
+    .join("\n");
 }
 
 /** 見出し行から「Ⅱ」「1.」「（1）」などの番号と記号を落とす */
@@ -180,6 +181,63 @@ export function applyCaseStructure(
     conclusion: stripFrameHeading(sliceLines(lines, structure.conclusion)),
     fullText: "",
   };
+}
+
+/** Ⅰ／Ⅱ／Ⅲ の枠の見出しだけの行（本文ではない） */
+function isFrameHeadingLine(line: string): boolean {
+  return /^[ⅠⅡⅢⅣ]\s*[.．、]?\s*(主張|理由|結論|再主張)?\s*$/.test(line.trim());
+}
+
+export interface StructureCoverage {
+  /** 2つ以上の範囲に入った行（本文が重複する） */
+  overlapping: number[];
+  /** 主張〜結論の間にあるのに、どこにも入らなかった行（本文が欠ける） */
+  missingInside: number[];
+  /** 主張より前・結論より後で、どこにも入らなかった行（題名・チーム名など） */
+  outside: string[];
+}
+
+/**
+ * 区切りが原稿全体を漏れなく・重なりなく覆っているか（§3.2「本文を書き換えない」）。
+ * AI の区切りが一部の行を飛ばすと、自作の本文が黙って欠けてしまう。
+ */
+export function checkStructureCoverage(text: string, structure: CaseStructure): StructureCoverage {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const count = new Array<number>(lines.length).fill(0);
+  const mark = (i: number) => {
+    if (i >= 0 && i < lines.length) count[i]++;
+  };
+  const markRange = ([a, b]: [number, number]) => {
+    for (let i = a; i <= b; i++) mark(i);
+  };
+  markRange(structure.claim);
+  // 見出しの行は1回だけ数える。小見出しのない節では、節の見出しと段落の見出しが
+  // 同じ行になる（実物の原稿でよくある形）
+  const titles = new Set<number>();
+  for (const sec of structure.sections) {
+    titles.add(sec.titleLine);
+    for (const sub of sec.subsections) {
+      // 見出しが本文の範囲の中を指すこともある（見出しと本文が1行の原稿）
+      if (sub.titleLine < sub.body[0] || sub.titleLine > sub.body[1]) titles.add(sub.titleLine);
+      markRange(sub.body);
+    }
+  }
+  for (const t of titles) mark(t);
+  markRange(structure.conclusion);
+
+  const start = structure.claim[0];
+  const end = structure.conclusion[1];
+  const overlapping: number[] = [];
+  const missingInside: number[] = [];
+  const outside: string[] = [];
+  lines.forEach((line, i) => {
+    if (!line.trim()) return;
+    if (count[i] > 1) overlapping.push(i);
+    if (count[i] > 0 || isFrameHeadingLine(line)) return;
+    if (i > start && i < end) missingInside.push(i);
+    else outside.push(line.trim());
+  });
+  return { overlapping, missingInside, outside };
 }
 
 /** 本文に出てくる資料番号（【資料N参照】と（資料N）の両方） */

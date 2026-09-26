@@ -44,15 +44,16 @@ export const STEPS_BY_KIND: Record<JobKind, GenStep[]> = {
   more_questions: MORE_QUESTION_STEPS,
 };
 
-export async function createJob(opts: {
+export interface NewJob {
   kind: JobKind;
   projectId: string;
   variantId?: string;
   params?: JobParams;
   createdBy: string;
-}): Promise<string> {
-  const id = newId("job");
-  await db.insert(generationJobs).values({
+}
+
+function jobRow(id: string, opts: NewJob) {
+  return {
     id,
     kind: opts.kind,
     projectId: opts.projectId,
@@ -63,10 +64,60 @@ export async function createJob(opts: {
       status: "pending" as const,
       attempts: 0,
     })),
-    status: "queued",
+    status: "queued" as const,
     createdBy: opts.createdBy,
-  });
+  };
+}
+
+export async function createJob(opts: NewJob): Promise<string> {
+  const id = newId("job");
+  await db.insert(generationJobs).values(jobRow(id, opts));
   return id;
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * トランザクションの中でジョブを作る（同期）。
+ * 立論の枠とジョブを別々に作ると、間で失敗したときにジョブのない枠が残り、
+ * 生成の1枠を永久に消費してしまう（削除機能がないため戻せない）。
+ */
+export function createJobTx(tx: Tx, opts: NewJob): string {
+  const id = newId("job");
+  tx.insert(generationJobs).values(jobRow(id, opts)).run();
+  return id;
+}
+
+/** トランザクションの中で「生成中のジョブがあるか」を調べる（同期） */
+export function hasActiveJobTx(tx: Tx, filter: { projectId?: string; variantId?: string }): boolean {
+  const conds = [inArray(generationJobs.status, ["queued", "running"])];
+  if (filter.projectId) conds.push(eq(generationJobs.projectId, filter.projectId));
+  if (filter.variantId) conds.push(eq(generationJobs.variantId, filter.variantId));
+  return tx.select({ id: generationJobs.id }).from(generationJobs).where(and(...conds)).all().length > 0;
+}
+
+// ── 同時実行数の制限 ───────────────────────────────────
+/**
+ * 同時に進めるジョブの数。Fly.io のマシンはメモリ512MBで、PDFの読み込み・
+ * AIへの並列問い合わせ・グラフ画像の作成が重なるとメモリが足りなくなる。
+ * 超えた分は順番待ちにする（状態は running のまま、ステップは pending）。
+ */
+const MAX_CONCURRENT_JOBS = Number(process.env.DEBATE_MAX_CONCURRENT_JOBS ?? 2);
+let runningCount = 0;
+const waiters: (() => void)[] = [];
+
+async function acquireSlot(): Promise<void> {
+  if (runningCount < MAX_CONCURRENT_JOBS) {
+    runningCount++;
+    return;
+  }
+  await new Promise<void>((resolve) => waiters.push(resolve));
+}
+
+function releaseSlot() {
+  const next = waiters.shift();
+  if (next) next();
+  else runningCount = Math.max(0, runningCount - 1);
 }
 
 /** 実行中（または開始待ち）のジョブがあるか。生成中のテーマ変更を止めるのに使う（§3 確定事項） */
@@ -133,8 +184,32 @@ export async function runJob(jobId: string, options: RunOptions = {}): Promise<s
   return runClaimed(job, options);
 }
 
-/** 既に running にしたジョブを進める（起動時の再開でも使う） */
+/**
+ * 既に running にしたジョブを進める（起動時の再開でも使う）。
+ * ステップの外（状態の保存など）で失敗しても、running のまま残さない。
+ * 残るとテーマ変更や質疑の追加が、再起動するまで止まってしまう。
+ */
 async function runClaimed(
+  job: typeof generationJobs.$inferSelect,
+  options: RunOptions,
+): Promise<string> {
+  await acquireSlot();
+  try {
+    return await runClaimedInner(job, options);
+  } catch (err) {
+    console.error("[generate] ジョブの進行中に想定外のエラーが起きました", job.id, err);
+    await db
+      .update(generationJobs)
+      .set({ status: "failed", finishedAt: nowIso() })
+      .where(eq(generationJobs.id, job.id))
+      .catch(() => {});
+    return "failed";
+  } finally {
+    releaseSlot();
+  }
+}
+
+async function runClaimedInner(
   job: typeof generationJobs.$inferSelect,
   options: RunOptions,
 ): Promise<string> {
@@ -244,16 +319,40 @@ async function attemptStep(
   };
 }
 
-/** 失敗したステップと、その後ろの未完了ステップをやり直す */
+export class JobBusyError extends Error {
+  constructor() {
+    super("この生成はいま実行中です。終わってから再実行してください。");
+    this.name = "JobBusyError";
+  }
+}
+
+/**
+ * 失敗したステップと、その後ろの未完了ステップをやり直す。
+ * 「失敗・一部失敗で終わったジョブを running にする」を1文で行い、取れた場合だけ進める。
+ * 状態を確かめずに書き換えると、実行中のジョブが二重に走る（二度押し・2つのタブ）。
+ */
 export async function retryFailed(jobId: string): Promise<string | null> {
-  const [job] = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId));
-  if (!job) return null;
+  const claimed = await db
+    .update(generationJobs)
+    .set({ status: "running", finishedAt: null })
+    .where(
+      and(
+        eq(generationJobs.id, jobId),
+        inArray(generationJobs.status, ["failed", "partial"]),
+      ),
+    )
+    .returning();
+  const job = claimed[0];
+  if (!job) {
+    const [exists] = await db.select({ id: generationJobs.id }).from(generationJobs).where(eq(generationJobs.id, jobId));
+    if (exists) throw new JobBusyError();
+    return null;
+  }
   const steps = job.steps.map((s) =>
     s.status === "done" ? s : { ...s, status: "pending" as const, error: undefined },
   );
   await saveSteps(jobId, steps);
-  await db.update(generationJobs).set({ status: "queued" }).where(eq(generationJobs.id, jobId));
-  return runJob(jobId);
+  return runClaimed({ ...job, steps }, {});
 }
 
 /**

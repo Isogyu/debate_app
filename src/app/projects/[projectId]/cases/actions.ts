@@ -12,7 +12,7 @@
  * 立論の削除機能は置かない（第5回確認）。
  */
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import fs from "node:fs/promises";
@@ -33,14 +33,19 @@ import { InvariantError, validateVariant } from "@/domain/invariants";
 import { claimRegenerationSchema } from "@/domain/schemas";
 import { hostOf, isWithinAllowedSources } from "@/domain/source-whitelist";
 import { newId, nowIso } from "@/lib/ids";
-import { retryFailed } from "@/lib/jobs/runner";
+import { JobBusyError, retryFailed } from "@/lib/jobs/runner";
 import {
+  assertActiveTheme,
+  assertEditableMaterial,
+  assertEditableVariant,
   copyMaterialToCase,
   RuleError,
   startGeneration,
   startImport,
   startMoreQuestions,
 } from "@/lib/jobs/orchestrate";
+import { loadMaterialsFor, stripUnsourcedNumbers } from "@/lib/jobs/steps-numbers";
+import { adjustLengthWarning } from "@/lib/jobs/length";
 import { getLlmProvider } from "@/lib/llm/anthropic";
 import { LlmConfigError, LlmSchemaError } from "@/lib/llm/provider";
 import { SYSTEM_BASE, regenerateClaimPrompt } from "@/lib/llm/prompts";
@@ -54,7 +59,9 @@ export interface ActionState {
 }
 
 function userMessage(err: unknown, fallback: string): string {
-  if (err instanceof RuleError || err instanceof ExtractError) return err.message;
+  if (err instanceof RuleError || err instanceof ExtractError || err instanceof JobBusyError) {
+    return err.message;
+  }
   if (err instanceof LlmConfigError) return err.message;
   console.error(err);
   return fallback;
@@ -91,7 +98,18 @@ export async function retryJob(_prev: ActionState, formData: FormData): Promise<
   const jobId = String(formData.get("jobId") ?? "");
   const [job] = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId));
   if (!job) return { error: "生成の記録が見つかりませんでした。" };
-  void retryFailed(jobId).catch((err) => console.error("[generate] 再実行が異常終了しました", err));
+  try {
+    await assertActiveTheme(job.projectId);
+  } catch (err) {
+    return { error: userMessage(err, "再実行できませんでした。") };
+  }
+  if (job.status !== "failed" && job.status !== "partial") {
+    return { error: "この生成はいま実行中か、すでに終わっています。" };
+  }
+  // 状態の確認と取得は retryFailed の中で1文で行う（二度押しで二重に走らせない）
+  void retryFailed(jobId).catch((err) => {
+    if (!(err instanceof JobBusyError)) console.error("[generate] 再実行が異常終了しました", err);
+  });
   revalidateTheme(job.projectId, job.variantId ?? undefined);
   return { ok: true, message: "失敗したところからやり直しています。" };
 }
@@ -136,6 +154,7 @@ export async function uploadCase(
 
   let variantId: string;
   try {
+    await assertActiveTheme(projectId);
     const c = await saveUploadFile(projectId, caseFile);
     const m =
       materialsFile instanceof File && materialsFile.size > 0
@@ -193,6 +212,18 @@ export async function setVerified(
   const projectId = String(formData.get("projectId") ?? "");
   const variantId = String(formData.get("variantId") ?? "") || undefined;
 
+  // 過去テーマは閲覧のみ。対象がどのテーマのものかをサーバー側で確かめる（§2 F1）
+  try {
+    if (target === "material") {
+      const m = await assertEditableMaterial(id);
+      if (m.projectId !== projectId) return { error: "資料が見つかりませんでした。" };
+    } else {
+      await assertEditableVariant(id, { projectId, allowRunningJob: true });
+    }
+  } catch (err) {
+    return { error: userMessage(err, "変更できませんでした。") };
+  }
+
   switch (target) {
     case "case":
       await db.update(caseVariants).set({ verified: value }).where(eq(caseVariants.id, id));
@@ -244,6 +275,13 @@ export async function saveMaterial(
   const quote = String(formData.get("quote") ?? "").trim();
   const lastCheckedAt = String(formData.get("lastCheckedAt") ?? "").trim();
 
+  try {
+    const m = await assertEditableMaterial(materialId);
+    if (m.projectId !== projectId) return { error: "資料が見つかりませんでした。" };
+    if (variantId) await assertEditableVariant(variantId, { projectId });
+  } catch (err) {
+    return { error: userMessage(err, "資料を保存できませんでした。") };
+  }
   if (!quote) return { error: "引用文（資料の中身）を入力してください。" };
   if (!citation) return { error: "出典（発行元・題名など）を入力してください。" };
   if (url && !hostOf(url)) return { error: "URL の形式が正しくありません。" };
@@ -288,10 +326,9 @@ export async function copyMaterial(
 }
 
 // ── 立論の編集（段落単位） ─────────────────────────────
+/** 編集してよい立論を読む（現テーマ・生成中でない。§2 F1） */
 async function loadVariantRow(variantId: string) {
-  const [variant] = await db.select().from(caseVariants).where(eq(caseVariants.id, variantId));
-  if (!variant) throw new Error("立論が見つかりませんでした。");
-  return variant;
+  return assertEditableVariant(variantId);
 }
 
 async function snapshot(projectId: string, variantId: string, debateCase: DebateCase, origin: "ai" | "human") {
@@ -320,7 +357,12 @@ async function persist(
       });
       await db
         .update(caseVariants)
-        .set({ debateCase: validated.debateCase, sourceRefs: validated.sourceRefs })
+        .set({
+          debateCase: validated.debateCase,
+          sourceRefs: validated.sourceRefs,
+          // 手で直したら字数の警告も測り直す
+          lengthWarning: adjustLengthWarning(validated.debateCase) ?? null,
+        })
         .where(eq(caseVariants.id, variant.id));
     } else {
       // 登録立論は自分たちの番号の付け方（（資料N）など）をそのまま残す
@@ -338,7 +380,12 @@ async function persist(
 export async function saveCaseFrame(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const userId = await requireSession();
   const variantId = String(formData.get("variantId") ?? "");
-  const variant = await loadVariantRow(variantId);
+  let variant;
+  try {
+    variant = await loadVariantRow(variantId);
+  } catch (err) {
+    return { error: userMessage(err, "保存できませんでした。") };
+  }
   await snapshot(variant.projectId, variantId, variant.debateCase, "human");
   const debateCase: DebateCase = {
     ...variant.debateCase,
@@ -353,7 +400,12 @@ export async function saveClaim(_prev: ActionState, formData: FormData): Promise
   const userId = await requireSession();
   const variantId = String(formData.get("variantId") ?? "");
   const claimId = String(formData.get("claimId") ?? "");
-  const variant = await loadVariantRow(variantId);
+  let variant;
+  try {
+    variant = await loadVariantRow(variantId);
+  } catch (err) {
+    return { error: userMessage(err, "保存できませんでした。") };
+  }
   await snapshot(variant.projectId, variantId, variant.debateCase, "human");
   const debateCase: DebateCase = {
     ...variant.debateCase,
@@ -381,7 +433,12 @@ export async function regenerateClaim(_prev: ActionState, formData: FormData): P
   const userId = await requireSession();
   const variantId = String(formData.get("variantId") ?? "");
   const claimId = String(formData.get("claimId") ?? "");
-  const variant = await loadVariantRow(variantId);
+  let variant;
+  try {
+    variant = await loadVariantRow(variantId);
+  } catch (err) {
+    return { error: userMessage(err, "再生成できませんでした。") };
+  }
   if (variant.origin !== "generated") {
     return { error: "登録した立論はAIで書き換えません。" };
   }
@@ -410,6 +467,15 @@ export async function regenerateClaim(_prev: ActionState, formData: FormData): P
       }),
       schema: claimRegenerationSchema,
     });
+    // 書き直した段落も、数字の関所を通す（出典に結びつかない数字を含む文は落とす。§1-9）
+    const materials = new Map((await loadMaterialsFor(variant)).map((m) => [m.id, m]));
+    const location = target.title;
+    const guard = (t: string) => stripUnsourcedNumbers(t, location, variant.sourceRefs, materials);
+    const claimText = guard(data.claim);
+    const warrant = guard(data.warrant);
+    const impact = guard(data.impact);
+    const removedCount = claimText.removed.length + warrant.removed.length + impact.removed.length;
+
     await snapshot(variant.projectId, variantId, variant.debateCase, "ai");
     const debateCase: DebateCase = {
       ...variant.debateCase,
@@ -418,27 +484,35 @@ export async function regenerateClaim(_prev: ActionState, formData: FormData): P
         subsections: s.subsections.map((c) =>
           c.id !== claimId
             ? c
-            : { ...c, claim: data.claim, warrant: data.warrant, causalChain: data.causalChain, impact: data.impact },
+            : {
+                ...c,
+                claim: claimText.text,
+                warrant: warrant.text,
+                causalChain: data.causalChain,
+                impact: impact.text,
+              },
         ),
       })),
     };
-    // AI が書き直した部分は未確認に戻す
-    await db.update(caseVariants).set({ verified: false }).where(eq(caseVariants.id, variantId));
+    debateCase.fullText = renderFullText(debateCase);
+    // AI が書き直した部分は未確認に戻し、字数も測り直す（§3.3）
+    await db
+      .update(caseVariants)
+      .set({ verified: false, lengthWarning: adjustLengthWarning(debateCase) ?? null })
+      .where(eq(caseVariants.id, variantId));
     await log(userId, "generate", claimId, variant.projectId, "立論の一部を再生成");
-    return persist(variant, debateCase);
+    const result = await persist(variant, debateCase);
+    if (result.ok && removedCount > 0) {
+      return {
+        ...result,
+        message: `出典に結びつかない数字を含む文を${removedCount}か所取り除きました。`,
+      };
+    }
+    return result;
   } catch (err) {
     if (err instanceof LlmSchemaError) {
       return { error: "AIの出力が読み取れませんでした。もう一度「この部分を再生成」を押してください。" };
     }
     return { error: userMessage(err, "再生成に失敗しました。") };
   }
-}
-
-/** 同じテーマの立論か（画面の取り違え防止） */
-export async function belongsTo(projectId: string, variantId: string): Promise<boolean> {
-  const rows = await db
-    .select({ id: caseVariants.id })
-    .from(caseVariants)
-    .where(and(eq(caseVariants.id, variantId), eq(caseVariants.projectId, projectId)));
-  return rows.length > 0;
 }

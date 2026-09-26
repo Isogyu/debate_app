@@ -32,10 +32,16 @@ const RATES = [260, 290, 320, 350, 380];
 export function SpeechMeter({
   text,
   debateCase,
+  adviseFixes = true,
 }: {
   text: string;
   /** 渡すと、原稿を見ながら練習できるペースメーカーを出す */
   debateCase?: DebateCase;
+  /**
+   * 超過・余りのときに直し方まで示すか。
+   * 登録（自作）の立論には出さない。目安の表示と警告だけにする（v6 要件 F10）
+   */
+  adviseFixes?: boolean;
 }) {
   // 読み上げ速度は人によってかなり違う。実際に測って選べるようにする
   const [rate, setRate] = useState(DEFAULT_CHARS_PER_MINUTE);
@@ -113,6 +119,7 @@ export function SpeechMeter({
         <div className="mt-3">
           <SpeechTimer
             chars={est.chars}
+            adviseFixes={adviseFixes}
             // 測った速さをそのまま推定に反映する。一番近い選択肢に寄せる
             onMeasured={(m) =>
               setRate(
@@ -128,14 +135,22 @@ export function SpeechMeter({
       {est.verdict === "over" && (
         <p className="mt-2 text-sm" style={{ color }}>
           <b>5分を超えています。このままだと減点されます。</b>
-          説明を削るのではなく、<b>論点そのものを1つ落とす</b>方が確実に縮みます。
+          {adviseFixes && (
+            <>
+              説明を削るのではなく、<b>論点そのものを1つ落とす</b>方が確実に縮みます。
+            </>
+          )}
         </p>
       )}
       {est.verdict === "short" && (
         <p className="mt-2 text-sm" style={{ color }}>
           <b>30秒以上余ります。これも減点対象です。</b>
-          早く読んで調整するのではなく、論証を一段深めて分量を足してください
-          （早口・遅すぎも減点されます）。
+          {adviseFixes && (
+            <>
+              早く読んで調整するのではなく、論証を一段深めて分量を足してください
+              （早口・遅すぎも減点されます）。
+            </>
+          )}
         </p>
       )}
     </section>
