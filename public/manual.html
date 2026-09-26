@@ -207,6 +207,8 @@
   .site-footer .title { color: #fff; font-weight: 700; font-size: 15px; }
   .site-footer .tiny { font-size: 11px; color: #8fa6c4; }
   .site-footer .tiny a { color: #8fa6c4; }
+  .site-footer .tiny a.ver { color: rgba(255,255,255,.16); text-decoration: none; font-family: ui-monospace, Menlo, monospace; font-size: 10px; }
+  .site-footer .tiny a.ver:hover { color: rgba(255,255,255,.5); }
 
   @media (max-width: 900px) {
     .layout { grid-template-columns: 1fr; gap: 24px; padding-top: 28px; }
@@ -733,7 +735,8 @@ f0a1b2c とりあえず寝る
     <div class="tiny">
       For the curious: <a href="https://github.com/Isogyu">github.com/Isogyu</a><br>
       Built with too much coffee and <span title="本番環境でのテストは、試合の本番だけにしてください">zero tests in production</span>.<br>
-      <span title="判例ディベート版の開発者を除く">No debaters were harmed in the making of this app.</span>
+      <span title="判例ディベート版の開発者を除く">No debaters were harmed in the making of this app.</span><br>
+      <a class="ver" href="/egg/403.html" tabindex="-1">v6.0.0</a>
     </div>
   </div>
 </footer>

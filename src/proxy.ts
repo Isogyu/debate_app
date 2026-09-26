@@ -22,6 +22,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   // ログイン画面・到達確認・静的ファイルは素通しする
   matcher: [
-    "/((?!login|manual.html|api/health|_next/static|_next/image|favicon.ico|icons).*)",
+    "/((?!login|manual.html|egg/|api/egg|api/health|_next/static|_next/image|favicon.ico|icons).*)",
   ],
 };
