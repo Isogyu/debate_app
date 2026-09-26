@@ -51,8 +51,6 @@ export default async function ExportPage({
     { kind: "sources", label: "参考資料（Word・表とグラフ入り）" },
   ];
   const printLinks = [
-    { kind: "case", label: "立論を印刷" },
-    { kind: "sources", label: "参考資料を印刷" },
     { kind: "flowchart", label: "質疑フローチャートを印刷" },
     { kind: "closing", label: "最終弁論の雛形を印刷" },
   ];
@@ -132,8 +130,8 @@ export default async function ExportPage({
             <section className="mb-6">
               <h2 className="mb-1 text-lg font-bold">印刷・PDF</h2>
               <p className="mb-3 text-sm text-[var(--muted)]">
-                印刷用の画面を開き、ブラウザの印刷から「PDFに保存」を選びます。紙に印刷するときもこちらです。
-                最終弁論の雛形は、試合中に手書きで空欄を埋められるように印刷されます。
+                質疑フローチャートと最終弁論の雛形を、印刷用の画面で開きます。ブラウザの印刷から「PDFに保存」を選べばPDFにもなります。
+                最終弁論の雛形は、試合中に手書きで空欄を埋められるように印刷されます。立論と参考資料は、上の Word で出力してください。
               </p>
               <div className="flex flex-wrap gap-3">
                 {printLinks.map((l) => (

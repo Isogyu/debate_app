@@ -255,7 +255,10 @@ export async function addQuestions(
   try {
     await startMoreQuestions(variantId, claimId, userId);
     const [v] = await db.select().from(caseVariants).where(eq(caseVariants.id, variantId));
-    if (v) revalidateTheme(v.projectId, variantId);
+    if (v) {
+      await log(userId, "generate", variantId, v.projectId, "質疑を追加で作成");
+      revalidateTheme(v.projectId, variantId);
+    }
     return { ok: true, message: "この箇所の質疑を追加しています（1〜2分）。" };
   } catch (err) {
     return { error: userMessage(err, "質疑を追加できませんでした。") };
@@ -585,7 +588,7 @@ export async function regenerateClaim(_prev: ActionState, formData: FormData): P
 
 // ── 使う質疑の選択 ─────────────────────────────────────
 export async function selectChain(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  await requireSession();
+  const userId = await requireSession();
   const projectId = String(formData.get("projectId") ?? "");
   const variantId = String(formData.get("variantId") ?? "");
   const chainId = String(formData.get("chainId") ?? "");
@@ -598,6 +601,8 @@ export async function selectChain(_prev: ActionState, formData: FormData): Promi
   } catch (err) {
     return { error: userMessage(err, "変更できませんでした。") };
   }
+  const OP_LABELS = { add: "使う質疑に追加", remove: "使う質疑から外した", up: "使う質疑の順番を変更", down: "使う質疑の順番を変更" } as const;
+  await log(userId, "edit", variantId, projectId, OP_LABELS[op]);
   revalidateTheme(projectId, variantId);
   return { ok: true };
 }

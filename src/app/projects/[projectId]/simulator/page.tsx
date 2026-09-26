@@ -2,13 +2,14 @@
  * 質疑シミュレーター（v6 要件 F11）
  *
  * 練習回数を増やすのが目的なので、過去の練習も一覧で振り返れるようにする。
+ * 「あなたの練習」はログインの名前ごとに全件、「ゼミ全体」は誰が練習したかの名前つきで最近の分を出す。
  */
 
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
-import { caseVariants, practiceSessions, projects } from "@/db/schema";
+import { caseVariants, practiceSessions, projects, users } from "@/db/schema";
 import { Breadcrumb } from "@/components/chrome";
 import { Header } from "@/components/header";
 import { CASE_ORIGIN_LABELS, SIDE_LABELS } from "@/domain/types";
@@ -53,16 +54,25 @@ export default async function SimulatorPage({
     ]),
   );
 
-  const sessions = await db
+  // ゼミ全体の最近の練習と、自分の練習（こちらは古いものまで）
+  const recent = await db
     .select()
     .from(practiceSessions)
     .where(eq(practiceSessions.projectId, projectId))
     .orderBy(desc(practiceSessions.createdAt))
     .limit(20);
+  const mine = await db
+    .select()
+    .from(practiceSessions)
+    .where(and(eq(practiceSessions.projectId, projectId), eq(practiceSessions.userId, userId)))
+    .orderBy(desc(practiceSessions.createdAt))
+    .limit(100);
 
-  let current = sessionId ? sessions.find((s) => s.id === sessionId) : undefined;
+  let current = sessionId
+    ? [...mine, ...recent].find((s) => s.id === sessionId)
+    : undefined;
   if (sessionId && !current) {
-    // 21件目より古い練習も、URLで直接開けるようにする
+    // 一覧に出ていない古い練習も、URLで直接開けるようにする
     [current] = await db
       .select()
       .from(practiceSessions)
@@ -70,7 +80,17 @@ export default async function SimulatorPage({
     if (current && current.projectId !== projectId) current = undefined;
   }
 
-  const myFinished = sessions.filter((s) => s.userId === userId && s.finishedAt).length;
+  // 誰が練習したかを名前で出す
+  const ownerIds = [...new Set([...recent, ...(current ? [current] : [])].map((s) => s.userId))];
+  const nameRows = ownerIds.length
+    ? await db
+        .select({ id: users.id, name: users.displayName })
+        .from(users)
+        .where(inArray(users.id, ownerIds))
+    : [];
+  const userName = new Map(nameRows.map((u) => [u.id, u.name]));
+
+  const myFinished = mine.filter((s) => s.finishedAt).length;
 
   return (
     <>
@@ -87,7 +107,7 @@ export default async function SimulatorPage({
           <h1 className="text-2xl font-bold">質疑練習</h1>
           {myFinished > 0 && (
             <span className="text-sm text-[var(--muted)]">
-              最近のあなたの練習: {myFinished}回
+              あなたの練習: {myFinished}回（講評まで終えたもの）
             </span>
           )}
           {current && (
@@ -103,6 +123,13 @@ export default async function SimulatorPage({
         {project.status !== "active" && !current && (
           <p className="mb-4 rounded border border-[var(--line)] p-3 text-sm text-[var(--muted)]">
             過去テーマのため、新しい練習は始められません（これまでの練習の記録は見られます）。
+          </p>
+        )}
+        {current && (
+          <p className="mb-3 text-sm text-[var(--muted)]">
+            練習した人：
+            <b className="text-[var(--foreground)]">{userName.get(current.userId) ?? "（不明）"}</b>
+            {current.userId === userId ? "（あなた）" : ""}／{formatJstDateTime(current.createdAt)}
           </p>
         )}
         <SimulatorClient
@@ -127,33 +154,86 @@ export default async function SimulatorPage({
           }
         />
 
-        {!current && sessions.length > 0 && (
-          <section className="mt-8">
-            <h2 className="mb-3 font-bold">これまでの練習（最近20件）</h2>
-            <ul className="space-y-2">
-              {sessions.map((s) => (
-                <li key={s.id}>
-                  <Link
-                    href={`/projects/${projectId}/simulator?session=${s.id}`}
-                    className="block rounded border border-[var(--line)] p-3 text-sm hover:border-[var(--accent)]"
-                  >
-                    <span className="font-bold">{MODE_LABELS[s.mode]}</span>
-                    <span className="ml-2 text-[var(--muted)]">
-                      {formatJstDateTime(s.createdAt)}／やり取り{" "}
-                      {s.turns.filter((t) => t.speaker === "user").length} 回
-                      {s.finishedAt ? "／講評あり" : "／途中"}
-                    </span>
-                    <span className="mt-1 block text-xs text-[var(--muted)]">
-                      自分: {variantName.get(s.userVariantId) ?? "（不明）"}　相手:{" "}
-                      {variantName.get(s.opponentVariantId) ?? "（不明）"}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
+        {!current && (
+          <>
+            <SessionList
+              title={`あなたの練習（${mine.length}件）`}
+              empty="まだ練習していません。上から始めてみましょう。"
+              sessions={mine}
+              projectId={projectId}
+              variantName={variantName}
+            />
+            {recent.length > 0 && (
+              <SessionList
+                title="ゼミ全体の最近の練習（20件まで）"
+                sessions={recent}
+                projectId={projectId}
+                variantName={variantName}
+                userName={userName}
+                myId={userId}
+              />
+            )}
+          </>
         )}
       </main>
     </>
+  );
+}
+
+type SessionRow = typeof practiceSessions.$inferSelect;
+
+function SessionList({
+  title,
+  empty,
+  sessions,
+  projectId,
+  variantName,
+  userName,
+  myId,
+}: {
+  title: string;
+  empty?: string;
+  sessions: SessionRow[];
+  projectId: string;
+  variantName: Map<string, string>;
+  /** 渡したときだけ、誰の練習かを表示する */
+  userName?: Map<string, string>;
+  myId?: string;
+}) {
+  return (
+    <section className="mt-8">
+      <h2 className="mb-3 font-bold">{title}</h2>
+      {sessions.length === 0 ? (
+        empty && <p className="text-sm text-[var(--muted)]">{empty}</p>
+      ) : (
+        <ul className="space-y-2">
+          {sessions.map((s) => (
+            <li key={s.id}>
+              <Link
+                href={`/projects/${projectId}/simulator?session=${s.id}`}
+                className="block rounded border border-[var(--line)] p-3 text-sm hover:border-[var(--accent)]"
+              >
+                {userName && (
+                  <span className="mr-2 rounded bg-[var(--line)]/40 px-2 py-0.5 text-xs font-bold">
+                    {userName.get(s.userId) ?? "（不明）"}
+                    {s.userId === myId ? "（あなた）" : ""}
+                  </span>
+                )}
+                <span className="font-bold">{MODE_LABELS[s.mode]}</span>
+                <span className="ml-2 text-[var(--muted)]">
+                  {formatJstDateTime(s.createdAt)}／やり取り{" "}
+                  {s.turns.filter((t) => t.speaker === "user").length} 回
+                  {s.finishedAt ? "／講評あり" : "／途中"}
+                </span>
+                <span className="mt-1 block text-xs text-[var(--muted)]">
+                  守る立論: {variantName.get(s.userVariantId) ?? "（不明）"}　相手:{" "}
+                  {variantName.get(s.opponentVariantId) ?? "（不明）"}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

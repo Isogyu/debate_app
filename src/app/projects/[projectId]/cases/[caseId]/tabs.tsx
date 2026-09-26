@@ -54,7 +54,9 @@ export function SourcesTab({
   materials,
   archived,
   copyTargets,
+  verifiedBy,
 }: {
+  verifiedBy: Record<string, { who: string; at: string }>;
   projectId: string;
   variantId: string;
   refs: SourceRequirement[];
@@ -95,6 +97,7 @@ export function SourcesTab({
                   variantId={variantId}
                   verified={m.status === "verified"}
                   label={label.label}
+                  by={verifiedBy[`material:${m.id}`]}
                 />
               ) : (
                 <span className="rounded border border-[var(--neg)] px-2 py-0.5 text-xs text-[var(--neg)]">

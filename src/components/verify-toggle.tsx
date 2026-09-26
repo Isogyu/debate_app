@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * 「確認済」への切り替え（v6 要件 §1 #5）。誰でもボタン一つで変えられる。記録は取らない。
+ * 「確認済」への切り替え（v6 要件 §1 #5）。誰でもボタン一つで変えられる。
+ * 誰が確認済にしたかは記録から引いて、印の横に出す。
  */
 
 import { useActionState } from "react";
 import { setVerified, type ActionState } from "@/app/projects/[projectId]/cases/actions";
 import { VerificationBadge } from "./chrome";
+import { formatJstDateTime } from "@/domain/jst";
 
 /** 何を確かめたら「確認済」にしてよいか（押す基準を画面に出す） */
 const CHECK_GUIDE: Record<"case" | "questions" | "closing" | "strategy" | "material", string> = {
@@ -24,7 +26,10 @@ export function VerifyToggle({
   variantId,
   verified,
   label,
+  by,
 }: {
+  /** 確認済にした人（記録があれば） */
+  by?: { who: string; at: string };
   target: "case" | "questions" | "closing" | "strategy" | "material";
   id: string;
   projectId: string;
@@ -37,6 +42,11 @@ export function VerifyToggle({
     <div>
     <form action={action} className="inline-flex flex-wrap items-center gap-2">
       <VerificationBadge verified={verified} label={label} />
+      {verified && by && (
+        <span className="text-xs text-[var(--muted)]">
+          {by.who}さんが確認（{formatJstDateTime(by.at)}）
+        </span>
+      )}
       <input type="hidden" name="target" value={target} />
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="projectId" value={projectId} />
