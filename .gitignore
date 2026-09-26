@@ -42,3 +42,6 @@ next-env.d.ts
 
 # アプリのデータ（SQLite本体・WAL・バックアップ）
 /data
+
+# 取説の隠しページの原稿（平文）。暗号化した public/egg/interview.enc だけをコミットする
+/egg-src
