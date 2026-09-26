@@ -455,7 +455,6 @@ function Reflection({
   reflection: PracticeReflection;
 }) {
   const questionsHref = `/projects/${projectId}/cases/${variantId}?tab=questions`;
-  const changed = reflection.stuckNodeIds.length + reflection.addedNodeIds.length > 0;
   const closingParagraphs = useMemo(
     () => (reflection.closingExample ?? "").split(/\n+/).filter(Boolean),
     [reflection.closingExample],
@@ -476,7 +475,6 @@ function Reflection({
       )}
       {mode === "defense" && (
         <p className="mb-4 text-sm">
-          {changed ? "8分セットも選び直しました。" : ""}
           <Link href={questionsHref} className="text-[var(--accent)] underline">
             自分の立論の質疑を見る
           </Link>

@@ -12,16 +12,16 @@ export async function Header() {
   return (
     <header className="border-b border-[var(--line)]">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-        <Link href="/" className="text-lg font-bold">
+        <Link href="/" className="whitespace-nowrap text-lg font-bold">
           ディベート支援
         </Link>
-        <nav className="flex items-center gap-4 text-sm">
+        <nav className="flex items-center gap-3 whitespace-nowrap text-sm">
           <Link href="/" className="hover:underline">
             現テーマ
           </Link>
           {name && (
             <form action={logout} className="flex items-center gap-2">
-              <span className="text-[var(--muted)]">{name}</span>
+              <span className="hidden text-[var(--muted)] sm:inline">{name}</span>
               <button type="submit" className="min-h-9 rounded border border-[var(--line)] px-3 hover:underline">
                 ログアウト
               </button>

@@ -11,6 +11,7 @@ import type {
   sourceMaterials,
 } from "@/db/schema";
 import { VerifyToggle } from "@/components/verify-toggle";
+import { ChainSelectButton } from "@/components/chain-select-button";
 import { statisticChartSvg } from "@/lib/export/chart-svg";
 import { formatNumber } from "@/domain/statistics";
 import { countSpeechChars } from "@/domain/speech";
@@ -304,6 +305,7 @@ export function FindingsPanel({ findings }: { findings: Finding[] }) {
 
 // ── 質疑 ─────────────────────────────────────────────
 export function QuestionsTab({
+  projectId,
   variantId,
   nodes,
   paragraphs,
@@ -311,10 +313,11 @@ export function QuestionsTab({
   readOnly,
   baseHref,
 }: {
+  projectId: string;
   variantId: string;
   nodes: QNode[];
   paragraphs: { claimId: string; label: string }[];
-  view: "paragraph" | "priority" | "set";
+  view: "paragraph" | "selected";
   readOnly: boolean;
   baseHref: string;
 }) {
@@ -322,16 +325,32 @@ export function QuestionsTab({
   for (const n of nodes) chains.set(n.chainId, [...(chains.get(n.chainId) ?? []), n]);
   for (const list of chains.values()) list.sort((a, b) => a.chainOrder - b.chainOrder);
   const roots = [...chains.values()].map((l) => l[0]);
-  const setCount = roots.filter((r) => r.setOrder != null).length;
+  const selected = roots
+    .filter((r) => r.setOrder != null)
+    .sort((a, b) => (a.setOrder ?? 0) - (b.setOrder ?? 0));
 
   const tabs = [
-    ["paragraph", "立論の箇所別"],
-    ["priority", "優先度順"],
-    ["set", `8分セット（${setCount}本）`],
+    ["paragraph", "すべての質疑（立論の箇所別）"],
+    ["selected", `使う質疑（${selected.length}本）`],
   ] as const;
 
-  const renderChain = (root: QNode) => (
-    <ChainCard key={root.chainId} nodes={chains.get(root.chainId)!} />
+  const renderChain = (root: QNode, canMove = false, isLast = false) => (
+    <ChainCard
+      key={root.chainId}
+      nodes={chains.get(root.chainId)!}
+      select={
+        readOnly ? null : (
+          <ChainSelectButton
+            projectId={projectId}
+            variantId={variantId}
+            chainId={root.chainId}
+            order={root.setOrder}
+            canMove={canMove}
+            isLast={isLast}
+          />
+        )
+      }
+    />
   );
 
   return (
@@ -339,8 +358,9 @@ export function QuestionsTab({
       <p className="mb-3 text-sm text-[var(--muted)]">
         質問は{nodes.length}問（連鎖{roots.filter((r) => chains.get(r.chainId)!.length > 1).length}本）。
         相手側から見れば「攻める質疑」、この立論の側から見れば「受ける質疑と回答準備」です。
+        試合で使うものを「この質疑を使う」で選ぶと、「使う質疑」とフローチャートでその順に並びます。
       </p>
-      <nav className="mb-4 flex flex-wrap gap-2" aria-label="並べ方">
+      <nav className="mb-4 flex flex-wrap gap-2" aria-label="表示">
         {tabs.map(([key, label]) => (
           <a
             key={key}
@@ -357,7 +377,7 @@ export function QuestionsTab({
         paragraphs.map((p) => {
           const list = roots
             .filter((r) => r.targetClaimId === p.claimId)
-            // 練習で詰まった質問は、同じ優先度の中で前に出す（§4.3）
+            // 練習で詰まった質問は、同じおすすめ度の中で前に出す（§4.3）
             .sort((a, b) => b.priority - a.priority || b.stuckCount - a.stuckCount);
           return (
             <section key={p.claimId} className="mb-6">
@@ -365,46 +385,38 @@ export function QuestionsTab({
                 <h3 className="font-bold">{p.label}（{list.length}本）</h3>
                 {!readOnly && <MoreQuestionsButton variantId={variantId} claimId={p.claimId} />}
               </div>
-              <div className="space-y-3">{list.map(renderChain)}</div>
+              <div className="space-y-3">{list.map((r) => renderChain(r))}</div>
             </section>
           );
         })}
 
-      {view === "priority" && (
+      {view === "selected" && (
         <div className="space-y-3">
-          {roots
-            .sort((a, b) => b.priority - a.priority || b.stuckCount - a.stuckCount)
-            .map(renderChain)}
-        </div>
-      )}
-
-      {view === "set" && (
-        <div className="space-y-3">
-          <p className="text-sm text-[var(--muted)]">
-            実際の8分で使う前提のおすすめの流れです。発言の字数から時間を見積もり、優先度の高い連鎖から選んでいます。
-          </p>
-          {roots
-            .filter((r) => r.setOrder != null)
-            .sort((a, b) => (a.setOrder ?? 0) - (b.setOrder ?? 0))
-            .map(renderChain)}
+          {selected.length === 0 ? (
+            <p className="rounded border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">
+              まだ選んでいません。「すべての質疑」で、試合で使う質疑の「この質疑を使う」を押してください。
+            </p>
+          ) : (
+            selected.map((r, i) => renderChain(r, true, i === selected.length - 1))
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function ChainCard({ nodes }: { nodes: QNode[] }) {
+function ChainCard({ nodes, select }: { nodes: QNode[]; select: React.ReactNode }) {
   const root = nodes[0];
   const byId = new Map(nodes.map((n) => [n.id, n]));
   return (
-    <details className="rounded border border-[var(--line)] p-3" open={nodes.length === 1}>
+    <div className="rounded border border-[var(--line)] p-3">
+    {/* ボタンは summary の外に置く（summary の中だと押したときに開閉も起きる） */}
+    {select && <div className="mb-2">{select}</div>}
+    <details open={nodes.length === 1}>
       <summary className="cursor-pointer list-none">
         <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
-          {root.setOrder != null && (
-            <span className="rounded bg-[var(--accent)] px-1.5 py-0.5 text-white">8分セット {root.setOrder}</span>
-          )}
           <span className="rounded border border-[var(--line)] px-1.5 py-0.5">{ATTACK_POINT_LABELS[root.attackPoint]}</span>
-          <span className="text-[var(--muted)]">優先度 {"★".repeat(root.priority)}</span>
+          <span className="text-[var(--muted)]">おすすめ度 {"★".repeat(root.priority)}</span>
           {nodes.length > 1 && <span className="text-[var(--muted)]">連鎖 {nodes.length}問</span>}
           {root.origin === "practice" && <span className="rounded border border-[var(--line)] px-1.5 py-0.5">練習から追加</span>}
           {root.stuckCount > 0 && <span className="text-[var(--neg)]">練習で詰まった {root.stuckCount}回</span>}
@@ -442,6 +454,7 @@ function ChainCard({ nodes }: { nodes: QNode[] }) {
         ))}
       </div>
     </details>
+    </div>
   );
 }
 

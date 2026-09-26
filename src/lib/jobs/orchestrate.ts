@@ -10,6 +10,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   caseVariants,
+  crossExamNodes,
   projects,
   sourceMaterials,
   uploads,
@@ -502,6 +503,48 @@ export async function importMaterialsToCase(opts: {
 
   background(runJob(jobId), "資料登録後の数字の検査");
   return result;
+}
+
+// ── 使う質疑の選択（ゼミ生が自分で選ぶ） ─────────────────
+/**
+ * 試合で使う質疑（フローチャートの連鎖）を選ぶ・外す・並べ替える。
+ * 選んだ順番は cross_exam_nodes.set_order に入れる（連鎖の全ノードに同じ値）。
+ */
+export async function updateChainSelection(opts: {
+  variantId: string;
+  projectId: string;
+  chainId: string;
+  op: "add" | "remove" | "up" | "down";
+}) {
+  db.transaction((tx) => {
+    assertEditableVariantTx(tx, opts.variantId, { projectId: opts.projectId, allowRunningJob: true });
+    const rows = tx
+      .select({ chainId: crossExamNodes.chainId, setOrder: crossExamNodes.setOrder })
+      .from(crossExamNodes)
+      .where(eq(crossExamNodes.targetVariantId, opts.variantId))
+      .all();
+    if (!rows.some((r) => r.chainId === opts.chainId)) {
+      throw new RuleError("質疑が見つかりませんでした。");
+    }
+    const order = [...new Map(rows.filter((r) => r.setOrder != null).map((r) => [r.chainId, r.setOrder as number]))]
+      .sort((a, b) => a[1] - b[1])
+      .map(([id]) => id);
+    const at = order.indexOf(opts.chainId);
+    if (opts.op === "add" && at < 0) order.push(opts.chainId);
+    if (opts.op === "remove" && at >= 0) order.splice(at, 1);
+    if (opts.op === "up" && at > 0) [order[at - 1], order[at]] = [order[at], order[at - 1]];
+    if (opts.op === "down" && at >= 0 && at < order.length - 1) {
+      [order[at + 1], order[at]] = [order[at], order[at + 1]];
+    }
+    const chainIds = [...new Set(rows.map((r) => r.chainId))];
+    for (const chainId of chainIds) {
+      const idx = order.indexOf(chainId);
+      tx.update(crossExamNodes)
+        .set({ setOrder: idx >= 0 ? idx + 1 : null })
+        .where(and(eq(crossExamNodes.targetVariantId, opts.variantId), eq(crossExamNodes.chainId, chainId)))
+        .run();
+    }
+  });
 }
 
 // ── 編集できるかの確認 ─────────────────────────────────

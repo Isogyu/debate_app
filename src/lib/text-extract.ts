@@ -105,15 +105,43 @@ export function detectUploadKind(
   return null;
 }
 
+/**
+ * 文字化け・数字の羅列になっていないか。
+ * 立論・資料は日本語の文章なので、かな・漢字がほとんど無ければ読み取りに失敗している。
+ */
+export function looksGarbled(text: string): boolean {
+  const chars = text.replace(/\s/g, "");
+  if (chars.length < 50) return false;
+  const japanese = (chars.match(/[\u3040-\u30ff\u3400-\u9fff]/g) ?? []).length;
+  const replacement = (chars.match(/[\ufffd\u25a1]/g) ?? []).length; // � □
+  return japanese / chars.length < 0.3 || replacement / chars.length > 0.05;
+}
+
+/**
+ * 登録ファイルの読み取り。Word（.docx）だけを受け付ける。
+ * PDF は作り方によって文字の並びや字形が崩れ（数字の羅列・文字化け）、
+ * 立論の論理展開が読み取れなかったため、登録では使わない（資料の自動取得では引き続き使う）。
+ */
 export async function extractUploadText(
   fileName: string,
   data: Uint8Array,
 ): Promise<ExtractedText> {
   const kind = detectUploadKind(fileName, data);
-  if (kind === "pdf") return extractPdfText(data);
-  if (kind === "docx") return extractDocxText(data);
-  if (kind === "txt") return { text: new TextDecoder("utf-8").decode(data) };
-  throw new ExtractError(
-    "取り込めるのは .docx（Word）と PDF です。古い .doc 形式は、Wordで .docx に保存し直してください。",
-  );
+  if (kind === "pdf") {
+    throw new ExtractError(
+      "PDFは文字の読み取りが崩れることがあるため、登録できません。Wordで開いて .docx 形式で保存し直してから登録してください。",
+    );
+  }
+  if (kind !== "docx") {
+    throw new ExtractError(
+      "登録できるのは Word（.docx）のファイルだけです。古い .doc 形式やPDFは、Wordで .docx に保存し直してください。",
+    );
+  }
+  const extracted = await extractDocxText(data);
+  if (looksGarbled(extracted.text)) {
+    throw new ExtractError(
+      "ファイルの文字を正しく読み取れませんでした（文字化けしています）。Wordで開いて文字が正しく表示されるか確認し、.docx で保存し直してください。",
+    );
+  }
+  return extracted;
 }

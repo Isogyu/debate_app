@@ -19,11 +19,11 @@ export default async function UploadPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ side?: string; category?: string; variant?: string }>;
+  searchParams: Promise<{ variant?: string }>;
 }) {
   await requireSession();
   const { projectId } = await params;
-  const { side, category, variant } = await searchParams;
+  const { variant } = await searchParams;
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   if (!project) notFound();
   // 資料を付けられる立論（本文ができているもの）
@@ -37,8 +37,7 @@ export default async function UploadPage({
     .filter((v) => v.debateCase.sections.length > 0)
     .map((v) => ({
       id: v.id,
-      label: `${SIDE_LABELS[v.side]}・${CASE_ORIGIN_LABELS[v.origin]}｜${v.label}`,
-      refCount: v.sourceRefs.length,
+      label: `${SIDE_LABELS[v.side]}・${CASE_ORIGIN_LABELS[v.origin]}｜${v.label}（資料${v.sourceRefs.length}件）`,
     }));
 
   return (
@@ -54,19 +53,13 @@ export default async function UploadPage({
         />
         <h1 className="mb-2 text-2xl font-bold">自作の立論・資料を登録する</h1>
         <p className="mb-6 text-sm text-[var(--muted)]">
-          「立論」は立論（と資料）をまとめて登録し、質疑と回答・フローチャート・最終弁論の雛形・特徴と戦い方を作ります。
-          「資料」は、登録済み・生成済みの立論に自作の資料を付けます。どちらも本文はAIで書き換えません。
+          Word（.docx）のファイルを選んでください。賛成側・反対側は原稿から自動で判定します。
+          立論の本文はAIで書き換えません。
         </p>
         {project.status !== "active" ? (
           <p className="rounded border border-[var(--line)] p-4">過去テーマには登録できません。</p>
         ) : (
-          <UploadForm
-            projectId={projectId}
-            defaultSide={side === "negative" ? "negative" : "affirmative"}
-            defaultCategory={category === "materials" ? "materials" : "case"}
-            defaultVariantId={variant}
-            cases={cases}
-          />
+          <UploadForm projectId={projectId} defaultVariantId={variant} cases={cases} />
         )}
       </main>
     </>

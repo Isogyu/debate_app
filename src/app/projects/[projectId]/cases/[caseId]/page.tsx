@@ -3,6 +3,7 @@
  */
 
 import Link from "next/link";
+import { SwitchSideButton } from "@/components/switch-side-button";
 import { and, desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
@@ -52,7 +53,7 @@ export default async function CasePage({
   const { projectId, caseId } = await params;
   const sp = await searchParams;
   const tab: Tab = (TABS.find(([k]) => k === sp.tab)?.[0] ?? "body") as Tab;
-  const view = sp.view === "priority" || sp.view === "set" ? sp.view : "paragraph";
+  const view = sp.view === "selected" ? "selected" : "paragraph";
 
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   const [variant] = await db
@@ -93,8 +94,18 @@ export default async function CasePage({
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <SideBadge side={variant.side} />
           <OriginBadge origin={variant.origin} />
+          {variant.origin === "uploaded" && !archived && (
+            <SwitchSideButton
+              projectId={projectId}
+              variantId={variant.id}
+              currentLabel={SIDE_LABELS[variant.side]}
+            />
+          )}
           <h1 className="text-xl font-bold">{title}</h1>
         </div>
+        {variant.origin === "generated" && variant.approach && variant.approach !== title && (
+          <p className="-mt-2 mb-4 text-sm text-[var(--muted)]">切り口: {variant.framework}／{variant.approach}</p>
+        )}
 
         {job && (job.status !== "done" || job.steps.some((s) => s.status === "failed")) && (
           <div className="mb-5">
@@ -163,7 +174,7 @@ async function TabContent({
   variant,
 }: {
   tab: Tab;
-  view: "paragraph" | "priority" | "set";
+  view: "paragraph" | "selected";
   base: string;
   projectId: string;
   archived: boolean;
@@ -219,7 +230,7 @@ async function TabContent({
         {!archived && variant.debateCase.sections.length > 0 && (
           <p className="mb-4">
             <Link
-              href={`/projects/${projectId}/upload?category=materials&variant=${variant.id}`}
+              href={`/projects/${projectId}/upload?variant=${variant.id}`}
               className="inline-flex min-h-11 items-center rounded border border-[var(--accent)] px-4 text-sm font-bold text-[var(--accent)]"
             >
               自作の資料をこの立論に登録する
@@ -268,7 +279,12 @@ async function TabContent({
       return (
         <>
           {toggle}
-          <FlowchartView nodes={flowNodes} />
+          <FlowchartView
+            nodes={flowNodes}
+            projectId={projectId}
+            variantId={variant.id}
+            readOnly={archived}
+          />
         </>
       );
     }
@@ -280,6 +296,7 @@ async function TabContent({
       <>
         {toggle}
         <QuestionsTab
+          projectId={projectId}
           variantId={variant.id}
           nodes={nodes}
           paragraphs={paragraphs}

@@ -337,6 +337,32 @@ async function acquireStatistic(
     }
   }
 
+  // グラフの指定がなければ、取った値からコードで作る（資料には必ず表とグラフを付ける）
+  if (!statistic.chart) {
+    const points = [
+      ...inputs.map((i) => ({ label: i.year ? `${i.label}（${i.year}）` : i.label, value: i.value, unit: i.unit })),
+    ];
+    const unit = points[0]?.unit ?? "";
+    const same = points.filter((p) => p.unit === unit);
+    if (same.length >= 2) {
+      const years = new Set(inputs.map((i) => i.year));
+      statistic.chart = {
+        type: years.size === same.length && years.size > 2 ? "line" : "bar",
+        title: input.provesWhat,
+        unit,
+        points: same.map((p) => ({ label: p.label, value: p.value })),
+      };
+    } else if (results.length > 0 && inputs.length >= 1) {
+      // 値が1つずつでも、計算結果（割合など）を並べて見せる
+      statistic.chart = {
+        type: "bar",
+        title: input.provesWhat,
+        unit: results[0].unit,
+        points: results.filter((r) => r.unit === results[0].unit).map((r) => ({ label: r.label, value: r.value })),
+      };
+    }
+  }
+
   // 統計資料の本文は、表から取った値と計算過程をコードで書き起こしたもの
   const quote = [
     ...inputs.map((i) => `・${i.label}：${formatNumber(i.value, i.unit)}（${i.year}）`),

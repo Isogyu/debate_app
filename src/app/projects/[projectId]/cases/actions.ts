@@ -40,6 +40,7 @@ import {
   assertEditableVariant,
   copyMaterialToCase,
   importMaterialsToCase,
+  updateChainSelection,
   RuleError,
   startGeneration,
   startImport,
@@ -51,6 +52,7 @@ import { getLlmProvider } from "@/lib/llm/anthropic";
 import { LlmConfigError, LlmSchemaError } from "@/lib/llm/provider";
 import { SYSTEM_BASE, regenerateClaimPrompt } from "@/lib/llm/prompts";
 import { ExtractError, extractUploadText } from "@/lib/text-extract";
+import { detectSide } from "@/lib/side-detect";
 import { currentUserId, log, requireSession } from "@/lib/session";
 import { todayJst } from "@/domain/jst";
 
@@ -139,45 +141,80 @@ async function saveUploadFile(
   return { filePath, text };
 }
 
-export async function uploadCase(
+/**
+ * 自作の立論・資料の登録（1つの画面で受ける）。
+ *  - 立論のファイルがあれば、立論として登録する（資料のファイルがあれば一緒に取り込む）。
+ *    賛成側・反対側は原稿から判定する（画面で聞かない）
+ *  - 資料のファイルだけなら、選んだ立論に資料として付ける
+ */
+export async function uploadFiles(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
   const userId = await requireSession();
   const projectId = String(formData.get("projectId") ?? "");
-  const side = String(formData.get("side") ?? "") as Side;
-  const label = String(formData.get("label") ?? "").trim();
   const caseFile = formData.get("caseFile");
   const materialsFile = formData.get("materialsFile");
+  const hasCase = caseFile instanceof File && caseFile.size > 0;
+  const hasMaterials = materialsFile instanceof File && materialsFile.size > 0;
 
-  if (side !== "affirmative" && side !== "negative") {
-    return { error: "賛成側か反対側かを選んでください。" };
-  }
-  if (!(caseFile instanceof File) || caseFile.size === 0) {
-    return { error: "立論のファイルを選んでください。" };
+  if (!hasCase && !hasMaterials) {
+    return { error: "立論か資料のファイル（Word）を選んでください。" };
   }
 
+  // 資料だけ → 既にある立論に付ける
+  if (!hasCase) {
+    const variantId = String(formData.get("variantId") ?? "");
+    if (!variantId) return { error: "資料を付ける立論を選んでください。" };
+    const file = materialsFile as File;
+    let result;
+    try {
+      await assertEditableVariant(variantId, { projectId });
+      const saved = await saveUploadFile(projectId, file);
+      result = await importMaterialsToCase({
+        variantId,
+        projectId,
+        fileName: file.name,
+        text: saved.text,
+        userId,
+      });
+      await log(userId, "upload", variantId, projectId, `資料を登録: ${file.name}`);
+    } catch (err) {
+      return { error: userMessage(err, "資料を登録できませんでした。") };
+    }
+    revalidateTheme(projectId, variantId);
+    const parts = [
+      result.added.length ? `【資料${result.added.join("】【資料")}】を追加しました` : "",
+      result.replaced.length ? `【資料${result.replaced.join("】【資料")}】を置き換えました` : "",
+    ].filter(Boolean);
+    redirect(
+      `/projects/${projectId}/cases/${variantId}?tab=sources&notice=${encodeURIComponent(
+        `${parts.join("。")}。数字の検査をやり直しています。`,
+      )}`,
+    );
+  }
+
+  // 立論（＋資料）
+  const file = caseFile as File;
   let variantId: string;
   try {
-    await assertActiveTheme(projectId);
-    const c = await saveUploadFile(projectId, caseFile);
-    const m =
-      materialsFile instanceof File && materialsFile.size > 0
-        ? await saveUploadFile(projectId, materialsFile)
-        : null;
+    const project = await assertActiveTheme(projectId);
+    const c = await saveUploadFile(projectId, file);
+    const m = hasMaterials ? await saveUploadFile(projectId, materialsFile as File) : null;
+    const side = await detectSide(project.resolution, file.name, c.text);
     variantId = await startImport({
       projectId,
       side,
-      label: label || caseFile.name.replace(/\.[^.]+$/, ""),
+      label: file.name.replace(/\.[^.]+$/, ""),
       userId,
-      caseFileName: caseFile.name,
+      caseFileName: file.name,
       caseFilePath: c.filePath,
       caseText: c.text,
       materialsFileName: m ? (materialsFile as File).name : undefined,
       materialsFilePath: m?.filePath,
       materialsText: m?.text,
     });
-    await log(userId, "upload", variantId, projectId, `立論を登録: ${caseFile.name}`);
+    await log(userId, "upload", variantId, projectId, `立論を登録: ${file.name}`);
   } catch (err) {
     return { error: userMessage(err, "登録できませんでした。") };
   }
@@ -185,44 +222,25 @@ export async function uploadCase(
   redirect(`/projects/${projectId}/cases/${variantId}`);
 }
 
-// ── 資料だけの登録（カテゴリ「資料」） ─────────────────
-export async function uploadMaterials(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
+/** 登録した立論の賛成側・反対側を入れ替える（自動判定が外れたとき用） */
+export async function switchSide(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const userId = await requireSession();
   const projectId = String(formData.get("projectId") ?? "");
   const variantId = String(formData.get("variantId") ?? "");
-  const file = formData.get("materialsFile");
-  if (!variantId) return { error: "資料を付ける立論を選んでください。" };
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "資料のファイルを選んでください。" };
-  }
-  let result;
   try {
-    await assertEditableVariant(variantId, { projectId });
-    const saved = await saveUploadFile(projectId, file);
-    result = await importMaterialsToCase({
-      variantId,
-      projectId,
-      fileName: file.name,
-      text: saved.text,
-      userId,
-    });
-    await log(userId, "upload", variantId, projectId, `資料を登録: ${file.name}`);
+    const v = await assertEditableVariant(variantId, { projectId });
+    if (v.origin !== "uploaded") return { error: "入れ替えられるのは登録した立論だけです。" };
+    const side: Side = v.side === "affirmative" ? "negative" : "affirmative";
+    await db
+      .update(caseVariants)
+      .set({ side, debateCase: { ...v.debateCase, side } })
+      .where(eq(caseVariants.id, variantId));
+    await log(userId, "edit", variantId, projectId, `賛成側・反対側を入れ替え（${side}）`);
   } catch (err) {
-    return { error: userMessage(err, "資料を登録できませんでした。") };
+    return { error: userMessage(err, "入れ替えられませんでした。") };
   }
   revalidateTheme(projectId, variantId);
-  const parts = [
-    result.added.length ? `【資料${result.added.join("】【資料")}】を追加しました` : "",
-    result.replaced.length ? `【資料${result.replaced.join("】【資料")}】を置き換えました` : "",
-  ].filter(Boolean);
-  redirect(
-    `/projects/${projectId}/cases/${variantId}?tab=sources&notice=${encodeURIComponent(
-      `${parts.join("。")}。数字の検査をやり直しています。`,
-    )}`,
-  );
+  return { ok: true };
 }
 
 // ── 質疑の追加（この箇所をもっと） ───────────────────────
@@ -562,4 +580,23 @@ export async function regenerateClaim(_prev: ActionState, formData: FormData): P
     }
     return { error: userMessage(err, "再生成に失敗しました。") };
   }
+}
+
+// ── 使う質疑の選択 ─────────────────────────────────────
+export async function selectChain(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
+  const projectId = String(formData.get("projectId") ?? "");
+  const variantId = String(formData.get("variantId") ?? "");
+  const chainId = String(formData.get("chainId") ?? "");
+  const op = String(formData.get("op") ?? "");
+  if (op !== "add" && op !== "remove" && op !== "up" && op !== "down") {
+    return { error: "操作が不明です。" };
+  }
+  try {
+    await updateChainSelection({ projectId, variantId, chainId, op });
+  } catch (err) {
+    return { error: userMessage(err, "変更できませんでした。") };
+  }
+  revalidateTheme(projectId, variantId);
+  return { ok: true };
 }

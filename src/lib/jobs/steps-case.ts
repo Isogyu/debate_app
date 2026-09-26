@@ -156,10 +156,7 @@ export async function stepCaseOutline(ctx: StepContext) {
     .set({
       framework: data.framework,
       approach: data.approach,
-      label: uniqueLabel(
-        `${data.framework}／${data.approach}`,
-        siblings.map((x) => x.label),
-      ),
+      label: uniqueLabel(shortLabel(data.framework, data.approach), siblings.map((x) => x.label)),
       debateCase: {
         side: target.side,
         valuePremise: data.valuePremise,
@@ -394,6 +391,17 @@ export function applyParagraphEdits(
   };
   next.fullText = renderFullText(next);
   return next;
+}
+
+/**
+ * 一覧・見出しに出す呼び名。AI の切り口の説明は長くなりがちで、見出しが2行に折り返して
+ * 読みにくかったので、切り口の最初の区切り（・、）までを使い、全体を30字までにする。
+ * 切り口の全文は approach に残る。
+ */
+export function shortLabel(framework: string, approach: string): string {
+  const head = approach.split(/[・、,，。]/)[0]?.trim() || approach;
+  const label = `${framework.trim()}／${head}`;
+  return label.length > 30 ? `${label.slice(0, 29)}…` : label;
 }
 
 /** 同じ側に同じ呼び名があれば「（2）」のように番号を付けて見分けられるようにする */
