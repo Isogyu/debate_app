@@ -183,6 +183,15 @@
   details.faq .ans::before { content: "A"; position: absolute; left: 16px; top: 0; font-family: Montserrat, sans-serif; color: var(--red); font-size: 18px; font-weight: 700; }
 
   /* ── 小ネタ（分かる人にだけ分かる） ───── */
+  .note.confess { background: #f4f6f9; border: 1px dashed #9aa8b8; }
+  .note.confess .label { color: var(--navy); }
+  .term { background: #0f1b2d; color: #d6e2f0; border-radius: var(--radius); padding: 14px 18px; margin: 14px 0 20px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.7; overflow-x: auto; white-space: pre; }
+  .term .p { color: #7fd1a8; } .term .h { color: #f2c46d; } .term .c { color: #7d8ea3; }
+  .feedback { background: linear-gradient(135deg, var(--navy), var(--blue)); color: #fff; border-radius: var(--radius); padding: 26px 26px 20px; margin: 20px 0 22px; }
+  .feedback h4 { margin: 0 0 8px; font-size: 20px; }
+  .feedback p, .feedback li { color: #e8f0fa; }
+  .feedback ul { margin-bottom: 0; }
+  .feedback strong { color: #fff; background: rgba(255,255,255,.14); padding: 0 4px; border-radius: 3px; }
   .aside { font-size: 12px; color: var(--muted); border-left: 2px dotted var(--line); padding-left: 10px; margin: -6px 0 18px; }
   .aside code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg-band); padding: 0 4px; border-radius: 3px; }
 
@@ -267,6 +276,7 @@
       <li><a href="#export"><span class="no">10</span>印刷・Wordで持ち出す</a></li>
       <li><a href="#check"><span class="no">11</span>「確認済」のルール</a></li>
       <li><a href="#faq"><span class="no">12</span>困ったときは</a></li>
+      <li><a href="#author"><span class="no">13</span>作者からのおわびとお願い</a></li>
     </ol>
   </nav>
 
@@ -300,6 +310,7 @@
         </table>
       </div>
       <p>さらに、<strong>読み上げタイマー</strong>や、<strong>AIを相手にした質疑の練習</strong>もできます。</p>
+      <p>なお、このアプリは<strong>政策ディベート専用</strong>です。判例ディベートには対応していません（事情は「<a href="#author">13 作者からのおわびとお願い</a>」で白状しています）。</p>
       <div class="note must">
         <span class="label">はじめに、ひとつだけ大切なこと</span>
         <p>AIは便利ですが、間違えることがあります。<strong>試合で使う前に、必ず自分の目で確かめてください。</strong>確かめ方は「<a href="#check">11「確認済」のルール</a>」で説明しています。</p>
@@ -344,6 +355,7 @@
         <span class="label">注意</span>
         <p>立論をつくっている最中は、論題を変えられません。つくり終わるのを待ってから変えてください。</p>
       </div>
+      <p class="aside">※ 扱える論題は常に1つ。このアプリはシングルタスクです。マルチタスクは人間のみなさんにお任せします。</p>
     </section>
 
     <!-- 04 -->
@@ -364,6 +376,7 @@
         <p>全部そろうまで、<strong>数分〜十数分</strong>かかります。<strong>この間は画面を開いたままにしておく</strong>と、止まらずに最後まで進みます。</p>
         <p>画面を閉じると、数分後にアプリがひと休みに入り、作業も一時停止します。次に誰かがアプリを開いたときに、止まったところから自動で続きが始まるので、やり直しにはなりません。</p>
       </div>
+      <p class="aside">※ 進み具合がしばらく動かなくても、固まっているのではなく考え中です。「残り約1分」が10分続くのは、パソコンのインストール画面の時代から続く由緒ある伝統です。</p>
       <h3>別の切り口でもう1本</h3>
       <p>各側の下にある <span class="ui primary">別の切り口でもう1本（残り2本）</span> を押すと、考え方を変えた立論をもう1本つくります。AIがつくれる立論は、<strong>1つの論題につき、各側3本まで</strong>です。ボタンに残りの本数が出ています。</p>
       <h3>途中で失敗したとき</h3>
@@ -454,6 +467,7 @@
       </ul>
       <h3>数字のチェック</h3>
       <p>立論や資料に出てくる数字について、「出典があるか」「計算が合っているか」「比べ方がそろっているか」「使い方に無理がないか」をチェックし、気になる点を本文タブに表示します。質疑で突かれやすいポイントでもあるので、目を通しておきましょう。</p>
+      <p class="aside">※ 出典のない数字は、説明コメントのないコードと同じくらい信用されません。半年後の自分にも読めるようにしておきましょう。</p>
     </section>
 
     <!-- 07 -->
@@ -493,6 +507,7 @@
         <li>上の <span class="ui primary" style="font-size:12px">攻める側で見る</span> <span class="ui">守る側で見る</span> で、見かたを切り替えられます。守る側では、各質問の模範回答が表示されます。</li>
         <li><strong>「使う質疑だけ」</strong>にチェックを入れると、自分たちで選んだ質問だけの流れになります。フローチャートの画面でも <span class="ui primary">この質疑を使う</span> で選べます。</li>
       </ul>
+      <p class="aside">※ 分岐を全部追いかけようとすると、それはもう質疑ではなく <code>if</code> 文の地獄です。8分は短いので、使う質疑は絞りましょう。</p>
     </section>
 
     <!-- 08 -->
@@ -509,6 +524,13 @@
         <li><strong>この立論と戦うチーム（相手側）の最終弁論</strong></li>
       </ul>
       <p>枠の中の【①相手が認めたこと】のような空欄に、試合の質疑で実際に出てきた内容を書き込むと、最終弁論ができあがります。質疑の流れごとの「記入例」も付いているので、書き方の参考にしてください。印刷して、試合中に手書きで埋めることもできます。</p>
+      <div class="note confess">
+        <span class="label">作者より、正直なおことわり</span>
+        <p>白状します。<strong>作者は最終弁論をしたことがありません。</strong>最終弁論についての知見もありません。</p>
+        <p>そのため、最終弁論の雛形と記入例は、経験にもとづいたものではなく、<strong>ほぼ全面的にAI頼み</strong>でつくられています。「質疑を踏まえる」「主張のくり返しと新しい論点は減点」というルールには沿うようにしていますが、<strong>実際の試合で本当に効く型なのかは、誰も確かめていません。</strong></p>
+        <p>経験のある先輩や先生のアドバイスがあれば、迷わずそちらを優先してください。そして、「ここは実戦だとこうする」という知恵があれば、ぜひ作者にも教えてください（→「<a href="#author">13</a>」）。</p>
+      </div>
+      <p class="aside">※ 作者の最終弁論の経験：0回。サンプルサイズ n=0 なので、統計的には何ひとつ言えません。「動くけど、なぜ動くのかは誰も知らない」コードと同じ状態で本番に出ています。</p>
       <h3>特徴と戦い方</h3>
       <p>その立論の強み・弱み、質疑で守るべきところ、絶対に譲ってはいけないこと、最終弁論での勝ち筋がまとまっています。試合前のチームの作戦会議に使ってください。</p>
     </section>
@@ -562,6 +584,7 @@
         <span class="label">出力する前に</span>
         <p>まだ「未確認」のものがあると、出力の画面で知らせてくれます。提出物にする前に、<a href="#check">確認</a>をすませておきましょう。</p>
       </div>
+      <p class="aside">※ ファイル名に「_最終」「_最終2」「_本当に最終」「_これで最後」が付き始めたら危険信号です。人類はこの問題を解決するためにバージョン管理を発明しましたが、Wordのファイル名は今日も増え続けています。</p>
     </section>
 
     <!-- 11 -->
@@ -585,6 +608,7 @@
         <span class="label">特に、資料は必ず元の資料を開いて確かめてください</span>
         <p>審査では資料の正確さが問われます。「AIが書いたから大丈夫」ではなく、<strong>最後に責任を持つのは自分たち</strong>です。確認は、ゼミの誰が押してもかまいません。</p>
       </div>
+      <p class="aside">※ 中身を読まずに「確認済」を押すのは、コードを読まずに「LGTM 👍」と返すのと同じです。だいたい後でバレます。</p>
     </section>
 
     <!-- 12 -->
@@ -639,6 +663,57 @@
         <div class="ans"><p>本文を直したり、登録した立論を削除したりしたものは、画面から元には戻せません。大事な立論は、Wordで出力して手元にも残しておくと安心です。</p>
         <p class="aside" style="margin:0">※ 残念ながら、ディベートにも人生にも <code>Ctrl+Z</code> はありません。<code>git revert</code> もありません。</p></div>
       </details>
+      <details class="faq">
+        <summary>判例ディベートの論題でも使えますか？</summary>
+        <div class="ans"><p>使えません。このアプリは政策ディベート専用です。判例ディベート版は、ある事情により存在しません（→「<a href="#author">13 作者からのおわびとお願い</a>」）。</p>
+        <p class="aside" style="margin:0">※ 探している機能は見つかりませんでした。<code>404 Not Found</code></p></div>
+      </details>
+      <details class="faq">
+        <summary>AIの言っていることは、全部正しいですか？</summary>
+        <div class="ans"><p>いいえ。AIは、間違っていることを<strong>とても自信満々に</strong>言うことがあります。資料は必ず元の資料を開いて確かめ、おかしいと思ったら遠慮なく直してください（→「<a href="#check">11「確認済」のルール</a>」）。</p>
+        <p class="aside" style="margin:0">※ 自信と正確さは別物です。これはAIにも人間にも、そして試合の相手にも言えます。</p></div>
+      </details>
+      <details class="faq">
+        <summary>使いにくいところがあります。文句を言ってもいいですか？</summary>
+        <div class="ans"><p>ぜひ言ってください。むしろ言ってください。受付窓口は「<a href="#author">13 作者からのおわびとお願い</a>」にあります。</p></div>
+      </details>
+    </section>
+
+    <!-- 13 -->
+    <section class="chapter" id="author">
+      <div class="chapter-head">
+        <div class="eyebrow">13 / From the Author</div>
+        <h2>作者からのおわびとお願い</h2>
+      </div>
+
+      <h3>判例ディベート版について（未実装です）</h3>
+      <p>実はこのアプリ、政策ディベートだけでなく、<strong>判例ディベート版もつくる予定</strong>でした。</p>
+      <p>ところが作者には判例ディベートの経験がなく、何をどう争い、どう準備するのかの勝手がわからないまま設計を考えているうちに、<strong>実装する前に燃え尽きてしまいました。</strong>そのため、判例ディベート版は実装していません。</p>
+      <p>判例ディベートの論題を入れても、それらしい政策ディベートの立論が出てくるだけなので、ご注意ください。</p>
+      <div class="term" aria-label="判例ディベート版の開発記録（冗談）"><span class="p">$</span> git log --oneline <span class="h">feature/判例ディベート</span>
+a1b2c3d 判例ディベート版、はじめました
+e4f5a6b 判例ディベートの勝ち方を調べる
+c7d8e9f 判例ディベートの勝ち方がわからない
+f0a1b2c とりあえず寝る
+<span class="c">（これ以降、コミットはありません）</span>
+
+<span class="p">$</span> git checkout main
+<span class="c">Switched to branch 'main'. Your motivation is behind 'origin/motivation' by 3 commits.</span></div>
+      <p class="aside">※ 公式のステータスは「近日公開予定」です。なお、この「近日」の単位は仕様書のどこにも定義されていません。<code>// TODO</code> コメントは、書いた瞬間がいちばん元気です。</p>
+      <p>判例ディベートの経験がある方、「こういう準備をする」「こういう機能があれば助かる」という知恵をお持ちの方がいたら、ぜひ教えてください。作者のやる気が再起動するかもしれません。</p>
+
+      <h3>ご意見・クレーム、何なりと受け付けます</h3>
+      <div class="feedback">
+        <h4>お客様の声は、何よりも大切です。</h4>
+        <p>このアプリにとってのお客様は、ゼミ生のみなさんです。「ここがわかりにくい」「こう動いてほしい」「AIの言っていることがおかしい」「そもそも使いにくい」――ご意見・ご要望・ご不満・クレーム、<strong>何なりとお寄せください。</strong>小さなことでも、言いにくいことでも大歓迎です。</p>
+        <ul>
+          <li>ゼミで作者（管理担当）に直接</li>
+          <li>ふだんの連絡手段で、ひとことメッセージを</li>
+          <li>技術に詳しい方は、ページ下の GitHub からでも</li>
+        </ul>
+      </div>
+      <p>不具合を知らせてくれるときは、<strong>「どの画面で」「何をしたら」「どうなったか」</strong>の3つを教えてもらえると、とても助かります。画面の写真（スクリーンショット）があれば最高です。</p>
+      <p class="aside">※ いただいたご意見に「それは仕様です」とは言わないよう、最大限努力します。「私の環境では動きます」も言いません（たぶん）。クレームは24時間365日受付中ですが、対応するのは人間なので、返事は寝て起きてからになります。</p>
 
       <div class="cta">
         <div class="eyebrow">Let's Get Started</div>
@@ -657,7 +732,8 @@
     </div>
     <div class="tiny">
       For the curious: <a href="https://github.com/Isogyu">github.com/Isogyu</a><br>
-      Built with too much coffee and <span title="本番環境でのテストは、試合の本番だけにしてください">zero tests in production</span>.
+      Built with too much coffee and <span title="本番環境でのテストは、試合の本番だけにしてください">zero tests in production</span>.<br>
+      <span title="判例ディベート版の開発者を除く">No debaters were harmed in the making of this app.</span>
     </div>
   </div>
 </footer>
