@@ -14,6 +14,7 @@ import { caseVariants, sourceMaterials, uploads } from "@/db/schema";
 import {
   applyCaseStructure,
   checkStructureCoverage,
+  repairStructure,
   ImportStructureError,
   caseRefNumbers,
   numberedLines,
@@ -60,7 +61,8 @@ export async function stepImport(ctx: StepContext) {
     }),
   );
   // 本文が欠ける・重なる区切りは採用しない。ImportStructureError になり、ランナーが1回だけやり直す
-  const coverage = checkStructureCoverage(upload.caseText, structure as CaseStructure);
+  const repaired = repairStructure(upload.caseText, structure as CaseStructure);
+  const coverage = checkStructureCoverage(upload.caseText, repaired);
   if (coverage.missingInside.length > 0 || coverage.overlapping.length > 0) {
     const lines = upload.caseText.replace(/\r\n?/g, "\n").split("\n");
     const sample = [...coverage.missingInside, ...coverage.overlapping]
@@ -71,7 +73,7 @@ export async function stepImport(ctx: StepContext) {
       `原稿の区切りを読み取れませんでした（${sample} の行を本文に正しく入れられません）。見出し（Ⅰ・Ⅱ・（1）など）の書き方を確認してください。`,
     );
   }
-  const debateCase = applyCaseStructure(upload.caseText, structure as CaseStructure, variant.side, newId);
+  const debateCase = applyCaseStructure(upload.caseText, repaired, variant.side, newId);
   debateCase.fullText = renderFullText(debateCase);
 
   // 資料ファイル → 資料の実体と参照

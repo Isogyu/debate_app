@@ -33,7 +33,7 @@ import { InvariantError, validateVariant } from "@/domain/invariants";
 import { claimRegenerationSchema } from "@/domain/schemas";
 import { hostOf, isWithinAllowedSources } from "@/domain/source-whitelist";
 import { newId, nowIso } from "@/lib/ids";
-import { JobBusyError, retryFailed } from "@/lib/jobs/runner";
+import { JobBusyError, startRetry } from "@/lib/jobs/runner";
 import {
   assertActiveTheme,
   assertEditableMaterial,
@@ -106,10 +106,13 @@ export async function retryJob(_prev: ActionState, formData: FormData): Promise<
   if (job.status !== "failed" && job.status !== "partial") {
     return { error: "この生成はいま実行中か、すでに終わっています。" };
   }
-  // 状態の確認と取得は retryFailed の中で1文で行う（二度押しで二重に走らせない）
-  void retryFailed(jobId).catch((err) => {
-    if (!(err instanceof JobBusyError)) console.error("[generate] 再実行が異常終了しました", err);
-  });
+  // 状態の確認と取得は1文で行う（二度押しで二重に走らせない）。実行は待たない
+  try {
+    const run = await startRetry(jobId);
+    void run?.done.catch((err) => console.error("[generate] 再実行が異常終了しました", err));
+  } catch (err) {
+    return { error: userMessage(err, "再実行できませんでした。") };
+  }
   revalidateTheme(job.projectId, job.variantId ?? undefined);
   return { ok: true, message: "失敗したところからやり直しています。" };
 }

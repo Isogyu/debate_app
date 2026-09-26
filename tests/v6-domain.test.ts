@@ -33,6 +33,7 @@ import {
   parseCheckedDate,
   parseMaterialsText,
   checkStructureCoverage,
+  repairStructure,
 } from "../src/domain/import-parse.ts";
 import { allowedValuesFrom, guardText, hasDisallowedNumber } from "../src/domain/number-guard.ts";
 import { estimateSpeech } from "../src/domain/speech.ts";
@@ -323,11 +324,19 @@ test("区切りが本文を覆っていない・重なっているときは検�
   assert.ok(overlap.overlapping.includes(7));
 });
 
-test("漢数字の数量表現も数字として拾う（二倍・三分の一・数百万人）", () => {
-  const found = extractNumbers("利用者は二倍に増え、対象者の三分の一が該当し、数百万人が影響を受ける。第一に、一つの論点がある。", "（1）");
-  assert.deepEqual(found.map((m) => m.text), ["二倍", "三分の一", "数百万人"]);
+test("漢数字の数量表現も数字として拾う（二倍・三分の一・五十万人）", () => {
+  const found = extractNumbers("利用者は二倍に増え、対象者の三分の一が該当し、五十万人が影響を受ける。第一に、一つの論点がある。", "（1）");
+  assert.deepEqual(found.map((m) => m.text), ["二倍", "三分の一", "五十万人"]);
   assert.equal(found[1].value !== null && Math.round(found[1].value), 33);
-  assert.equal(found[2].value, null);
+  assert.equal(found[2].value, 500000);
+});
+
+test("数量の主張でない数字は拾わない（概数・一人ひとり・資料番号）", () => {
+  const found = extractNumbers(
+    "数百万人が影響を受け、数件の事例がある。一人ひとりの担税力を見る。一人当たりの負担を問う。資料12のグラフを見てください。",
+    "（1）",
+  );
+  assert.deepEqual(found.map((m) => m.text), []);
 });
 
 test("派生文章の数字の関所: 立論・資料にない数字を含む文を落とす", () => {
@@ -450,4 +459,36 @@ test("出典の文には URL と確認日を重ねて入れない", () => {
   assert.equal(b.citation, "日経新聞の記事");
   assert.equal(b.url, "https://www.nikkei.com/x");
   assert.equal(b.lastCheckedAt, "2025-01-01");
+});
+
+test("実物の原稿（節の導入文・段落の続き）も、区切りを補って欠けなく取り込める", async () => {
+  const fs = await import("node:fs");
+  const text = fs.readFileSync(
+    new URL("../docs/samples/623343056385212639_廃止賛成側立論　完成.txt", import.meta.url),
+    "utf8",
+  );
+  // AI が返しそうな自然な区切り（導入文と、空行をはさんだ段落の続きを取りこぼしている）
+  const natural = {
+    claim: [4, 4] as [number, number],
+    sections: [
+      {
+        titleLine: 8,
+        type: "criteria" as const,
+        subsections: [
+          { titleLine: 11, body: [12, 12] as [number, number] },
+          { titleLine: 14, body: [15, 15] as [number, number] },
+          { titleLine: 20, body: [21, 21] as [number, number] },
+        ],
+      },
+      { titleLine: 23, type: "environment" as const, subsections: [{ titleLine: 23, body: [24, 25] as [number, number] }] },
+    ],
+    conclusion: [29, 29] as [number, number],
+  };
+  assert.deepEqual(checkStructureCoverage(text, natural).missingInside, [9, 18]);
+  const repaired = repairStructure(text, natural);
+  const cov = checkStructureCoverage(text, repaired);
+  assert.deepEqual(cov.missingInside, []);
+  assert.deepEqual(cov.overlapping, []);
+  assert.deepEqual(repaired.sections[0].intro, [9, 9]);
+  assert.deepEqual(repaired.sections[0].subsections[1].body, [15, 18]);
 });

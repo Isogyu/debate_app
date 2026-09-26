@@ -43,6 +43,8 @@ function isExcluded(sentence: string, index: number, raw: string): boolean {
   // 条・項・号（法令の条番号）、第N回、昭和・平成・令和N年、西暦年
   if (/^\s*(条|項|号)/.test(after)) return true;
   if (/第\s*$/.test(before)) return true;
+  // 「資料12のグラフ」のような資料番号（括弧なしの書き方）
+  if (/資料\s*$/.test(before)) return true;
   if (/(昭和|平成|令和|大正|明治)\s*$/.test(before)) return true;
   if (/^\s*(年度?|月|日)/.test(after)) return true;
   if (/^[0-9０-９]{4}$/.test(raw.trim()) && /^\s*年/.test(after)) return true;
@@ -64,14 +66,14 @@ export function splitSentences(text: string): string[] {
 }
 
 /**
- * 漢数字の数量表現。算用数字の表記に加えて拾う（「二倍」「三分の一」「数百万人」）。
+ * 漢数字の数量表現。算用数字の表記に加えて拾う（「二倍」「三分の一」「五十万人」）。
  * 「一つ」「一方」「第一に」のような数量でない漢数字は、単位が続かないので拾わない。
+ * 「数件」「数百万人」のような概数は、出典で確かめられる数字ではないので対象外。
  */
 const KANJI_NUMBER_PATTERN =
-  /(約|およそ|実に|わずか)?([〇一二三四五六七八九十百千]+|数|十数|数十|数百|数千)(分の[〇一二三四五六七八九十百千]+|(万|億|兆)?\s*(倍|割|パーセント|％|%|人|件|世帯|社|円|万人|億円|兆円|団体|事業所))/g;
+  /(約|およそ|実に|わずか)?([〇一二三四五六七八九十百千]+)(分の[〇一二三四五六七八九十百千]+|(万|億|兆)?\s*(倍|割|パーセント|％|%|人|件|世帯|社|円|万人|億円|兆円|団体|事業所))/g;
 
 function kanjiValue(digits: string, rest: string): number | null {
-  if (/数/.test(digits)) return null; // 「数百万人」は数値として検証できない
   const base = kanjiToNumberLocal(digits);
   if (base === null) return null;
   // 「三分の一」は 1/3（分の前が分母、後ろが分子）
@@ -156,7 +158,9 @@ export function extractNumbers(
       const index = m.index ?? 0;
       if (taken.some(([a, b]) => index < b && index + m[0].length > a)) continue;
       const before = cleaned.slice(Math.max(0, index - 1), index);
-      if (before === "第") continue; // 第一に・第二条
+      if (before === "第" || before === "数") continue; // 第一に・第二条・数十人
+      // 「一人ひとり」「一人当たり」「一件一件」は数量の主張ではない
+      if (m[2] === "一" && !m[1] && /^(人|件|社|世帯|団体|事業所)/.test(m[5] ?? "")) continue;
       const digits = m[2];
       const rest = m[3];
       const unit = rest.startsWith("分の")
@@ -180,7 +184,8 @@ export function extractNumbers(
 export function extractCaseNumbers(c: DebateCase): NumberMention[] {
   const out: NumberMention[] = [];
   out.push(...extractNumbers(c.claim, "Ⅰ. 主張"));
-  c.sections.forEach((s) => {
+  c.sections.forEach((s, i) => {
+    if (s.intro) out.push(...extractNumbers(s.intro, `${i + 1}. ${s.title}（導入）`));
     s.subsections.forEach((sub, j) => {
       const location = `（${j + 1}）${sub.title}`;
       for (const text of [sub.claim, sub.warrant, sub.impact]) {

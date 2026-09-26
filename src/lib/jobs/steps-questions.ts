@@ -66,9 +66,9 @@ async function saveChains(
   const allowed = await allowedNumbersFor(variant);
   const g = (t: string) => guardText(t, allowed).text;
   for (const chain of output.chains) {
-    // 質問そのものに出典のない数字があれば、その連鎖ごと使わない（v6 要件 §1-9）。
-    // 回答・狙いの側は、その数字を含む文だけを落とす
-    if (chain.nodes.some((n) => hasDisallowedNumber(n.question, allowed))) {
+    // 出典のない数字を含む文は落とす（v6 要件 §1-9）。質問が丸ごと落ちてしまう
+    // （質問が1文で、その文に数字がある）場合だけ、その連鎖を使わない
+    if (chain.nodes.some((n) => !g(n.question).trim())) {
       console.warn("[questions] 出典のない数字を含む質問を除きました:", chain.nodes[0]?.question);
       continue;
     }
@@ -87,7 +87,7 @@ async function saveChains(
         targetClaimId: paragraph.claimId,
         targetParagraph: paragraph.label,
         attackPoint: chain.attackPoint,
-        question: n.question,
+        question: g(n.question),
         purpose: g(n.purpose),
         modelAnswer: g(n.modelAnswer),
         goal: i === 0 && chain.goal ? g(chain.goal) : undefined,

@@ -375,6 +375,7 @@ ${numberedText}
 - 行番号は左端の数字（0始まり）です。範囲は両端を含みます
 - claim: Ⅰ主張の本文の行範囲（見出し行を含めてもよい）
 - sections: Ⅱ理由の中の「1.」「2.」などのブロック。titleLine はブロック見出しの行
+  - intro: ブロック見出しと最初の（1）の間に導入の文があれば、その行範囲。なければ null
   - subsections: ブロック内の段落。（1）（2）の見出しがあればその行を titleLine に、
     本文の行範囲を body に。見出しのない段落しかない場合は、ブロック見出しの行を titleLine にし、
     ブロックの本文全体を1つの段落として body にする
@@ -385,7 +386,7 @@ ${numberedText}
 {
   "claim": [開始行, 終了行],
   "sections": [
-    { "titleLine": 行, "type": "criteria", "subsections": [ { "titleLine": 行, "body": [開始行, 終了行] } ] }
+    { "titleLine": 行, "type": "criteria", "intro": [開始行, 終了行] または null, "subsections": [ { "titleLine": 行, "body": [開始行, 終了行] } ] }
   ],
   "conclusion": [開始行, 終了行]
 }

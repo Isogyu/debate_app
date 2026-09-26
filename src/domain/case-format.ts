@@ -50,6 +50,7 @@ export function renderFullText(c: DebateCase): string {
   const lines: string[] = ["Ⅰ. 主張", "", `　${c.claim}`, "", "Ⅱ. 理由", ""];
   c.sections.forEach((s, i) => {
     lines.push(`${i + 1}. ${s.title}`);
+    if (s.intro) lines.push(`　${s.intro}`);
     s.subsections.forEach((sub, j) => {
       lines.push(`　（${j + 1}）${sub.title}`);
       lines.push(`　　${sub.claim}`);

@@ -21,7 +21,7 @@ import {
   hasActiveJobTx,
   latestAnalysisJob,
   resumeInterruptedJobs,
-  retryFailed,
+  startRetry,
   runJob,
 } from "./runner";
 
@@ -95,8 +95,14 @@ export async function retryAnalysisJob(projectId: string, userId: string) {
   await assertActiveTheme(projectId);
   const job = await latestAnalysisJob(projectId);
   if (!job) throw new RuleError("分析の記録が見つかりませんでした。");
-  const status = await retryFailed(job.id);
-  if (status === "done") await afterAnalysis(projectId, userId);
+  // 取得（二重実行の防止）だけを待ち、分析そのものは裏で進める。
+  // 同時実行の枠が埋まっていると順番待ちになり、画面が長く応答しなくなるため
+  const run = await startRetry(job.id);
+  if (!run) throw new RuleError("分析の記録が見つかりませんでした。");
+  background(
+    run.done.then((status) => (status === "done" ? afterAnalysis(projectId, userId) : undefined)),
+    "論題分析のやり直し",
+  );
 }
 
 /**

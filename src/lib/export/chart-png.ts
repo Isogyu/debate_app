@@ -29,13 +29,16 @@ let cachedFontFiles: string[] | null = null;
 function fontFiles(): string[] {
   if (cachedFontFiles) return cachedFontFiles;
   const extra = process.env.DEBATE_CHART_FONT ? [process.env.DEBATE_CHART_FONT] : [];
-  cachedFontFiles = [...extra, ...FONT_FILE_CANDIDATES].filter((f) => {
+  // 1つだけ使う。Noto CJK の .ttc は1ファイル20MB前後あり、変換のたびに複数読むと
+  // メモリ512MBのマシンでは重い（太字はグラフの見出しでも通常体で足りる）
+  const found = [...extra, ...FONT_FILE_CANDIDATES].find((f) => {
     try {
       return fs.statSync(f).isFile();
     } catch {
       return false;
     }
   });
+  cachedFontFiles = found ? [found] : [];
   return cachedFontFiles;
 }
 

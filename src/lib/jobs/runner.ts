@@ -102,7 +102,11 @@ export function hasActiveJobTx(tx: Tx, filter: { projectId?: string; variantId?:
  * AIへの並列問い合わせ・グラフ画像の作成が重なるとメモリが足りなくなる。
  * 超えた分は順番待ちにする（状態は running のまま、ステップは pending）。
  */
-const MAX_CONCURRENT_JOBS = Number(process.env.DEBATE_MAX_CONCURRENT_JOBS ?? 2);
+const MAX_CONCURRENT_JOBS = (() => {
+  // 0 や数値でない値だと全ジョブが永久に待つので、1以上に丸める
+  const n = Math.floor(Number(process.env.DEBATE_MAX_CONCURRENT_JOBS ?? 2));
+  return Number.isFinite(n) && n >= 1 ? n : 2;
+})();
 let runningCount = 0;
 const waiters: (() => void)[] = [];
 
@@ -332,6 +336,15 @@ export class JobBusyError extends Error {
  * 状態を確かめずに書き換えると、実行中のジョブが二重に走る（二度押し・2つのタブ）。
  */
 export async function retryFailed(jobId: string): Promise<string | null> {
+  const run = await startRetry(jobId);
+  return run ? run.done : null;
+}
+
+/**
+ * 再実行の取得だけを待ち、実行そのものは待たずに返す（画面の応答を止めないため）。
+ * 取得できなければ JobBusyError。戻り値の Promise は実行の完了で解決する。
+ */
+export async function startRetry(jobId: string): Promise<{ done: Promise<string> } | null> {
   const claimed = await db
     .update(generationJobs)
     .set({ status: "running", finishedAt: null })
@@ -352,7 +365,8 @@ export async function retryFailed(jobId: string): Promise<string | null> {
     s.status === "done" ? s : { ...s, status: "pending" as const, error: undefined },
   );
   await saveSteps(jobId, steps);
-  return runClaimed({ ...job, steps }, {});
+  // オブジェクトで包む。Promise をそのまま返すと await で実行の完了まで待ってしまう
+  return { done: runClaimed({ ...job, steps }, {}) };
 }
 
 /**
