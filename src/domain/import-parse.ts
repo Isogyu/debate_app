@@ -104,6 +104,8 @@ export interface CaseStructure {
   sections: {
     titleLine: number;
     type: SectionType;
+    /** 節の見出しと最初の段落の間の導入文 */
+    intro?: [number, number] | null;
     subsections: { titleLine: number; body: [number, number] }[];
   }[];
   conclusion: [number, number];
@@ -120,11 +122,12 @@ function sliceLines(lines: string[], [a, b]: [number, number]): string {
   if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < a || b >= lines.length) {
     throw new ImportStructureError(`行の範囲が不正です（${a}〜${b}）`);
   }
+  // 段落の中の改行は残す（元の原稿の段落分けを崩さない）
   return lines
     .slice(a, b + 1)
     .map((l) => l.trim())
     .filter(Boolean)
-    .join("");
+    .join("\n");
 }
 
 /** 見出し行から「Ⅱ」「1.」「（1）」などの番号と記号を落とす */
@@ -155,6 +158,7 @@ export function applyCaseStructure(
     id: newId("sec"),
     title: cleanHeading(lines[s.titleLine] ?? ""),
     type: s.type,
+    ...(s.intro ? { intro: sliceLines(lines, s.intro) } : {}),
     subsections: s.subsections.map(
       (sub): Claim => ({
         id: newId("clm"),
@@ -179,6 +183,125 @@ export function applyCaseStructure(
     sections,
     conclusion: stripFrameHeading(sliceLines(lines, structure.conclusion)),
     fullText: "",
+  };
+}
+
+/** Ⅰ／Ⅱ／Ⅲ の枠の見出しだけの行（本文ではない） */
+function isFrameHeadingLine(line: string): boolean {
+  return /^[ⅠⅡⅢⅣ]\s*[.．、]?\s*(主張|理由|結論|再主張)?\s*$/.test(line.trim());
+}
+
+export interface StructureCoverage {
+  /** 2つ以上の範囲に入った行（本文が重複する） */
+  overlapping: number[];
+  /** 主張〜結論の間にあるのに、どこにも入らなかった行（本文が欠ける） */
+  missingInside: number[];
+  /** 主張より前・結論より後で、どこにも入らなかった行（題名・チーム名など） */
+  outside: string[];
+}
+
+/**
+ * 区切りが原稿全体を漏れなく・重なりなく覆っているか（§3.2「本文を書き換えない」）。
+ * AI の区切りが一部の行を飛ばすと、自作の本文が黙って欠けてしまう。
+ */
+export function checkStructureCoverage(text: string, structure: CaseStructure): StructureCoverage {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const count = new Array<number>(lines.length).fill(0);
+  const mark = (i: number) => {
+    if (i >= 0 && i < lines.length) count[i]++;
+  };
+  const markRange = ([a, b]: [number, number]) => {
+    for (let i = a; i <= b; i++) mark(i);
+  };
+  markRange(structure.claim);
+  // 見出しの行は1回だけ数える。小見出しのない節では、節の見出しと段落の見出しが
+  // 同じ行になる（実物の原稿でよくある形）
+  const titles = new Set<number>();
+  for (const sec of structure.sections) {
+    titles.add(sec.titleLine);
+    if (sec.intro) markRange(sec.intro);
+    for (const sub of sec.subsections) {
+      // 見出しが本文の範囲の中を指すこともある（見出しと本文が1行の原稿）
+      if (sub.titleLine < sub.body[0] || sub.titleLine > sub.body[1]) titles.add(sub.titleLine);
+      markRange(sub.body);
+    }
+  }
+  for (const t of titles) mark(t);
+  markRange(structure.conclusion);
+
+  const start = structure.claim[0];
+  const end = structure.conclusion[1];
+  const overlapping: number[] = [];
+  const missingInside: number[] = [];
+  const outside: string[] = [];
+  lines.forEach((line, i) => {
+    if (!line.trim()) return;
+    if (count[i] > 1) overlapping.push(i);
+    if (count[i] > 0 || isFrameHeadingLine(line)) return;
+    if (i > start && i < end) missingInside.push(i);
+    else outside.push(line.trim());
+  });
+  return { overlapping, missingInside, outside };
+}
+
+/**
+ * AI の区切りの取りこぼしをコードで補う。本文の行が区切りから漏れても、
+ * 位置から持ち主が一意に決まるものは、そこへ含める（本文は書き換えない）。
+ *  - 節の見出しと最初の（1）の間の行 → 節の導入文
+ *  - 段落の本文の後ろ〜次の見出しの前の行 → その段落の本文の続き
+ * 実物の原稿（docs/samples）には、どちらの形もある。
+ */
+export function repairStructure(text: string, structure: CaseStructure): CaseStructure {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const isContent = (i: number) =>
+    i >= 0 && i < lines.length && !!lines[i].trim() && !isFrameHeadingLine(lines[i]);
+
+  // 境界になる行（見出し・本文の始まり）の一覧。次の境界の手前までを持ち主の範囲とする
+  const boundaries = new Set<number>([structure.conclusion[0]]);
+  for (const sec of structure.sections) {
+    boundaries.add(sec.titleLine);
+    for (const sub of sec.subsections) boundaries.add(Math.min(sub.titleLine, sub.body[0]));
+  }
+  for (let i = 0; i < lines.length; i++) {
+    if (isFrameHeadingLine(lines[i]) && lines[i].trim()) boundaries.add(i);
+  }
+  const nextBoundaryAfter = (i: number) => {
+    let next = lines.length;
+    for (const b of boundaries) if (b > i && b < next) next = b;
+    return next;
+  };
+  const lastContentBefore = (from: number, to: number) => {
+    let last = -1;
+    for (let i = from; i < to; i++) if (isContent(i)) last = i;
+    return last;
+  };
+
+  return {
+    ...structure,
+    sections: structure.sections.map((sec) => {
+      const first = sec.subsections[0];
+      let intro = sec.intro ?? null;
+      if (!intro && first) {
+        const firstStart = Math.min(first.titleLine, first.body[0]);
+        if (firstStart > sec.titleLine + 1) {
+          const last = lastContentBefore(sec.titleLine + 1, firstStart);
+          if (last >= 0) {
+            let start = sec.titleLine + 1;
+            while (start < last && !isContent(start)) start++;
+            intro = [start, last];
+          }
+        }
+      }
+      return {
+        ...sec,
+        intro,
+        subsections: sec.subsections.map((sub) => {
+          const end = nextBoundaryAfter(sub.body[1]);
+          const last = lastContentBefore(sub.body[1] + 1, end);
+          return last > sub.body[1] ? { ...sub, body: [sub.body[0], last] as [number, number] } : sub;
+        }),
+      };
+    }),
   };
 }
 

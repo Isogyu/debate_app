@@ -151,6 +151,7 @@ export const importStructureSchema = z.object({
       z.object({
         titleLine: z.number().int(),
         type: sectionTypeSchema,
+        intro: z.tuple([z.number().int(), z.number().int()]).nullable().optional(),
         subsections: z
           .array(
             z.object({

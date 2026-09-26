@@ -43,6 +43,8 @@ function isExcluded(sentence: string, index: number, raw: string): boolean {
   // 条・項・号（法令の条番号）、第N回、昭和・平成・令和N年、西暦年
   if (/^\s*(条|項|号)/.test(after)) return true;
   if (/第\s*$/.test(before)) return true;
+  // 「資料12のグラフ」のような資料番号（括弧なしの書き方）
+  if (/資料\s*$/.test(before)) return true;
   if (/(昭和|平成|令和|大正|明治)\s*$/.test(before)) return true;
   if (/^\s*(年度?|月|日)/.test(after)) return true;
   if (/^[0-9０-９]{4}$/.test(raw.trim()) && /^\s*年/.test(after)) return true;
@@ -63,6 +65,40 @@ export function splitSentences(text: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * 漢数字の数量表現。算用数字の表記に加えて拾う（「二倍」「三分の一」「五十万人」）。
+ * 「一つ」「一方」「第一に」のような数量でない漢数字は、単位が続かないので拾わない。
+ * 「数件」「数百万人」のような概数は、出典で確かめられる数字ではないので対象外。
+ */
+const KANJI_NUMBER_PATTERN =
+  /(約|およそ|実に|わずか)?([〇一二三四五六七八九十百千]+)(分の[〇一二三四五六七八九十百千]+|(万|億|兆)?\s*(倍|割|パーセント|％|%|人|件|世帯|社|円|万人|億円|兆円|団体|事業所))/g;
+
+function kanjiValue(digits: string, rest: string): number | null {
+  const base = kanjiToNumberLocal(digits);
+  if (base === null) return null;
+  // 「三分の一」は 1/3（分の前が分母、後ろが分子）
+  const frac = rest.match(/^分の([〇一二三四五六七八九十百千]+)/);
+  if (frac) {
+    const num = kanjiToNumberLocal(frac[1]);
+    return num !== null && base ? (num / base) * 100 : null; // 分数は％に直して比べる
+  }
+  const mult = rest.match(/^(万|億|兆)/)?.[1];
+  return mult ? base * { 万: 1e4, 億: 1e8, 兆: 1e12 }[mult]! : base;
+}
+
+function kanjiToNumberLocal(text: string): number | null {
+  let total = 0;
+  let current = 0;
+  for (const ch of text) {
+    if (ch in KANJI_DIGITS) current = current * 10 + KANJI_DIGITS[ch];
+    else if (ch === "十" || ch === "百" || ch === "千") {
+      total += (current || 1) * (ch === "十" ? 10 : ch === "百" ? 100 : 1000);
+      current = 0;
+    } else return null;
+  }
+  return total + current;
+}
+
 export function extractNumbers(
   text: string,
   location: string,
@@ -75,13 +111,15 @@ export function extractNumbers(
       .replace(/【[^】]*】/g, (m) => "　".repeat(m.length))
       .replace(/[（(]\s*[0-9０-９]+\s*[）)]/g, (m) => "　".repeat(m.length));
     const refNumbers = [...matchRefMarkers(sentence)].map((m) => m.number);
+    const taken: [number, number][] = [];
 
     for (const m of cleaned.matchAll(NUMBER_PATTERN)) {
       const raw = m[0];
       if (!raw.trim()) continue;
       const index = m.index ?? 0;
       if (m[5]) {
-        // 漢数字の割合（三割）
+        // 漢数字の割合（三割）。下の漢数字の検出と重ならないよう位置を控える
+        taken.push([index, index + raw.length]);
         out.push({
           text: raw,
           value: KANJI_DIGITS[m[5]] ?? null,
@@ -104,10 +142,34 @@ export function extractNumbers(
       if (value !== null && m[3]) {
         value *= { 兆: 1e12, 億: 1e8, 万: 1e4, 千: 1e3 }[m[3]] ?? 1;
       }
+      taken.push([index, index + raw.length]);
       out.push({
         text: raw.trim(),
         value,
         unit,
+        sentence,
+        refNumbers,
+        claimId,
+        location,
+      });
+    }
+
+    for (const m of cleaned.matchAll(KANJI_NUMBER_PATTERN)) {
+      const index = m.index ?? 0;
+      if (taken.some(([a, b]) => index < b && index + m[0].length > a)) continue;
+      const before = cleaned.slice(Math.max(0, index - 1), index);
+      if (before === "第" || before === "数") continue; // 第一に・第二条・数十人
+      // 「一人ひとり」「一人当たり」「一件一件」は数量の主張ではない
+      if (m[2] === "一" && !m[1] && /^(人|件|社|世帯|団体|事業所)/.test(m[5] ?? "")) continue;
+      const digits = m[2];
+      const rest = m[3];
+      const unit = rest.startsWith("分の")
+        ? "％"
+        : (m[5] ?? "").replace(/^(万|億|兆)/, "");
+      out.push({
+        text: m[0].trim(),
+        value: kanjiValue(digits, rest),
+        unit: unit === "割" ? "割" : unit,
         sentence,
         refNumbers,
         claimId,
@@ -122,7 +184,8 @@ export function extractNumbers(
 export function extractCaseNumbers(c: DebateCase): NumberMention[] {
   const out: NumberMention[] = [];
   out.push(...extractNumbers(c.claim, "Ⅰ. 主張"));
-  c.sections.forEach((s) => {
+  c.sections.forEach((s, i) => {
+    if (s.intro) out.push(...extractNumbers(s.intro, `${i + 1}. ${s.title}（導入）`));
     s.subsections.forEach((sub, j) => {
       const location = `（${j + 1}）${sub.title}`;
       for (const text of [sub.claim, sub.warrant, sub.impact]) {

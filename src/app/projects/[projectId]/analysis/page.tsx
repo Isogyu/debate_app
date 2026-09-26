@@ -12,6 +12,7 @@ import { issueCategories, projects } from "@/db/schema";
 import { Breadcrumb, Header } from "@/components/chrome";
 import { latestAnalysisJob } from "@/lib/jobs/runner";
 import { AnalysisForm } from "./analysis-form";
+import { requireSession } from "@/lib/session";
 import { RetryAnalysis } from "./retry-analysis";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export default async function AnalysisPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
+  await requireSession();
   const { projectId } = await params;
   const [project] = await db
     .select()

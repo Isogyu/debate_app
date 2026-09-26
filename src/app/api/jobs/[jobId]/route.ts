@@ -9,11 +9,16 @@ import { db } from "@/db";
 import { generationJobs } from "@/db/schema";
 import { GEN_STEP_LABELS } from "@/domain/types";
 import { progressOf } from "@/lib/jobs/runner";
+import { currentUserId } from "@/lib/session";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
+  // proxy はクッキーの有無しか見ない。署名をここで検証する
+  if (!(await currentUserId())) {
+    return NextResponse.json({ error: "ログインしてください。" }, { status: 401 });
+  }
   const { jobId } = await params;
   const [job] = await db
     .select()

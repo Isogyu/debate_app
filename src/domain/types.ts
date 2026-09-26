@@ -186,6 +186,8 @@ export interface CaseSection {
   id: string;
   title: string;
   type: SectionType;
+  /** 節の見出しと最初の（1）の間の導入文（登録立論で使う。生成立論は持たない） */
+  intro?: string;
   subsections: Claim[];
 }
 

@@ -32,7 +32,11 @@ import {
   numberingIssues,
   parseCheckedDate,
   parseMaterialsText,
+  checkStructureCoverage,
+  repairStructure,
 } from "../src/domain/import-parse.ts";
+import { allowedValuesFrom, guardText, hasDisallowedNumber } from "../src/domain/number-guard.ts";
+import { estimateSpeech } from "../src/domain/speech.ts";
 import {
   articleToNum,
   egovNodeToText,
@@ -289,7 +293,65 @@ test("区切りの行番号から、本文を書き換えずに構造化する",
   );
   assert.equal(dc.claim, "56条を廃止するべきである。");
   assert.equal(dc.sections[0].title, "制定当時との比較");
-  assert.equal(dc.sections[0].subsections[0].claim, "本文その1。本文その2。");
+  // 元の原稿の段落分け（改行）は残す
+  assert.equal(dc.sections[0].subsections[0].claim, "本文その1。\n本文その2。");
+});
+
+test("区切りが本文を覆っていない・重なっているときは検出する", () => {
+  const text = ["題名：56条廃止", "Ⅰ　主張", "廃止するべきである。", "Ⅱ　理由", "（1）比較", "本文1。", "本文2。", "本文3。", "Ⅲ　結論", "廃止するべきである。"].join("\n");
+  const ok = checkStructureCoverage(text, {
+    claim: [2, 2],
+    sections: [{ titleLine: 4, type: "criteria", subsections: [{ titleLine: 4, body: [5, 7] }] }],
+    conclusion: [9, 9],
+  });
+  assert.deepEqual(ok.missingInside, []);
+  assert.deepEqual(ok.overlapping, []);
+  // 題名は本文の外なので、欠落ではなく「外にある行」として知らせる
+  assert.deepEqual(ok.outside, ["題名：56条廃止"]);
+
+  const missing = checkStructureCoverage(text, {
+    claim: [2, 2],
+    sections: [{ titleLine: 4, type: "criteria", subsections: [{ titleLine: 4, body: [5, 5] }] }],
+    conclusion: [9, 9],
+  });
+  assert.deepEqual(missing.missingInside, [6, 7]);
+
+  const overlap = checkStructureCoverage(text, {
+    claim: [2, 2],
+    sections: [{ titleLine: 4, type: "criteria", subsections: [{ titleLine: 4, body: [5, 7] }, { titleLine: 7, body: [7, 7] }] }],
+    conclusion: [9, 9],
+  });
+  assert.ok(overlap.overlapping.includes(7));
+});
+
+test("漢数字の数量表現も数字として拾う（二倍・三分の一・五十万人）", () => {
+  const found = extractNumbers("利用者は二倍に増え、対象者の三分の一が該当し、五十万人が影響を受ける。第一に、一つの論点がある。", "（1）");
+  assert.deepEqual(found.map((m) => m.text), ["二倍", "三分の一", "五十万人"]);
+  assert.equal(found[1].value !== null && Math.round(found[1].value), 33);
+  assert.equal(found[2].value, 500000);
+});
+
+test("数量の主張でない数字は拾わない（概数・一人ひとり・資料番号）", () => {
+  const found = extractNumbers(
+    "数百万人が影響を受け、数件の事例がある。一人ひとりの担税力を見る。一人当たりの負担を問う。資料12のグラフを見てください。",
+    "（1）",
+  );
+  assert.deepEqual(found.map((m) => m.text), []);
+});
+
+test("派生文章の数字の関所: 立論・資料にない数字を含む文を落とす", () => {
+  const allowed = allowedValuesFrom(["家族従業者は61.5％である【資料1参照】。約3割が該当する。"], []);
+  const r = guardText("相手は61.5％を根拠にした。しかし実際は75％である。約三割という点は認めた。", allowed);
+  assert.equal(r.text, "相手は61.5％を根拠にした。約三割という点は認めた。");
+  assert.equal(r.removed.length, 1);
+  assert.ok(hasDisallowedNumber("2倍に増えた。", allowed));
+});
+
+test("5分判定は丸める前の秒数で行う（1,601字は超過、1,441字は適正）", () => {
+  assert.equal(estimateSpeech("あ".repeat(1601)).verdict, "over");
+  assert.equal(estimateSpeech("あ".repeat(1600)).verdict, "ok");
+  assert.equal(estimateSpeech("あ".repeat(1441)).verdict, "ok");
+  assert.equal(estimateSpeech("あ".repeat(1440)).verdict, "short");
 });
 
 test("行の範囲が壊れていたら例外にする（ランナーがやり直す）", () => {
@@ -397,4 +459,36 @@ test("出典の文には URL と確認日を重ねて入れない", () => {
   assert.equal(b.citation, "日経新聞の記事");
   assert.equal(b.url, "https://www.nikkei.com/x");
   assert.equal(b.lastCheckedAt, "2025-01-01");
+});
+
+test("実物の原稿（節の導入文・段落の続き）も、区切りを補って欠けなく取り込める", async () => {
+  const fs = await import("node:fs");
+  const text = fs.readFileSync(
+    new URL("../docs/samples/623343056385212639_廃止賛成側立論　完成.txt", import.meta.url),
+    "utf8",
+  );
+  // AI が返しそうな自然な区切り（導入文と、空行をはさんだ段落の続きを取りこぼしている）
+  const natural = {
+    claim: [4, 4] as [number, number],
+    sections: [
+      {
+        titleLine: 8,
+        type: "criteria" as const,
+        subsections: [
+          { titleLine: 11, body: [12, 12] as [number, number] },
+          { titleLine: 14, body: [15, 15] as [number, number] },
+          { titleLine: 20, body: [21, 21] as [number, number] },
+        ],
+      },
+      { titleLine: 23, type: "environment" as const, subsections: [{ titleLine: 23, body: [24, 25] as [number, number] }] },
+    ],
+    conclusion: [29, 29] as [number, number],
+  };
+  assert.deepEqual(checkStructureCoverage(text, natural).missingInside, [9, 18]);
+  const repaired = repairStructure(text, natural);
+  const cov = checkStructureCoverage(text, repaired);
+  assert.deepEqual(cov.missingInside, []);
+  assert.deepEqual(cov.overlapping, []);
+  assert.deepEqual(repaired.sections[0].intro, [9, 9]);
+  assert.deepEqual(repaired.sections[0].subsections[1].body, [15, 18]);
 });

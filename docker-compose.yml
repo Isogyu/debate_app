@@ -9,7 +9,8 @@ services:
       DEBATE_MODEL: ${DEBATE_MODEL:-claude-sonnet-5}
       DEBATE_APP_PASSWORD: ${DEBATE_APP_PASSWORD}
       DEBATE_SESSION_SECRET: ${DEBATE_SESSION_SECRET:-}
-      DEBATE_ADMIN_PASSCODE: ${DEBATE_ADMIN_PASSCODE}
+      DEBATE_MODEL_LIGHT: ${DEBATE_MODEL_LIGHT:-claude-haiku-4-5-20251001}
+      ESTAT_APP_ID: ${ESTAT_APP_ID:-}
       DEBATE_DATA_DIR: /app/data
     volumes:
       # これを外すとコンテナを作り直した瞬間に全データが消える

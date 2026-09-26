@@ -56,8 +56,12 @@ export async function stepAnalysis(ctx: StepContext) {
   );
 
   await db.delete(issueCategories).where(eq(issueCategories.projectId, ctx.projectId));
+  // AI が同じ名前のカテゴリを2度返すと一意制約で失敗するので、名前でまとめる
+  const uniqueCategories = data.categories.filter(
+    (c, i, arr) => arr.findIndex((x) => x.name.trim() === c.name.trim()) === i,
+  );
   await db.insert(issueCategories).values(
-    data.categories.map((c, i) => ({
+    uniqueCategories.map((c, i) => ({
       id: newId("cat"),
       projectId: ctx.projectId,
       name: c.name,

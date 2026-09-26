@@ -13,6 +13,9 @@ import { db } from "@/db";
 import { caseVariants, sourceMaterials, uploads } from "@/db/schema";
 import {
   applyCaseStructure,
+  checkStructureCoverage,
+  repairStructure,
+  ImportStructureError,
   caseRefNumbers,
   numberedLines,
   numberingIssues,
@@ -23,7 +26,7 @@ import { renderFullText, matchRefMarkers } from "@/domain/case-format";
 import { hostOf, isWithinAllowedSources } from "@/domain/source-whitelist";
 import type { SourceRequirement, SourceType } from "@/domain/types";
 import { importStructureSchema } from "@/domain/schemas";
-import { getLlmProvider } from "@/lib/llm/anthropic";
+import { getLlmProvider, LIGHT_MODEL } from "@/lib/llm/anthropic";
 import * as P from "@/lib/llm/prompts";
 import { newId } from "@/lib/ids";
 import { loadVariant, UsageMeter, type StepContext } from "./common";
@@ -53,11 +56,24 @@ export async function stepImport(ctx: StepContext) {
         "あなたはディベート原稿の構造を読み取る補助です。本文を書き換えず、行番号だけを答えます。",
       prompt: P.importStructurePrompt(numberedLines(upload.caseText)),
       schema: importStructureSchema,
+      model: LIGHT_MODEL,
       maxTokens: 4000,
     }),
   );
-  // 範囲の誤りは ImportStructureError になり、ランナーが1回だけやり直す
-  const debateCase = applyCaseStructure(upload.caseText, structure as CaseStructure, variant.side, newId);
+  // 本文が欠ける・重なる区切りは採用しない。ImportStructureError になり、ランナーが1回だけやり直す
+  const repaired = repairStructure(upload.caseText, structure as CaseStructure);
+  const coverage = checkStructureCoverage(upload.caseText, repaired);
+  if (coverage.missingInside.length > 0 || coverage.overlapping.length > 0) {
+    const lines = upload.caseText.replace(/\r\n?/g, "\n").split("\n");
+    const sample = [...coverage.missingInside, ...coverage.overlapping]
+      .slice(0, 2)
+      .map((i) => `「${lines[i].trim().slice(0, 30)}」`)
+      .join("、");
+    throw new ImportStructureError(
+      `原稿の区切りを読み取れませんでした（${sample} の行を本文に正しく入れられません）。見出し（Ⅰ・Ⅱ・（1）など）の書き方を確認してください。`,
+    );
+  }
+  const debateCase = applyCaseStructure(upload.caseText, repaired, variant.side, newId);
   debateCase.fullText = renderFullText(debateCase);
 
   // 資料ファイル → 資料の実体と参照
@@ -115,6 +131,16 @@ export async function stepImport(ctx: StepContext) {
   }
 
   const issues = numberingIssues(upload.caseText, blocks);
+  if (coverage.outside.length > 0) {
+    // 題名・チーム名など、主張の前・結論の後の行は本文に含めない。黙って落とさず知らせる
+    issues.push({
+      severity: "warning",
+      message: `次の行は立論の本文（Ⅰ主張〜Ⅲ結論）の外にあるため、読み上げ時間に含めていません: ${coverage.outside
+        .slice(0, 3)
+        .map((l) => `「${l.slice(0, 30)}」`)
+        .join("、")}${coverage.outside.length > 3 ? ` ほか${coverage.outside.length - 3}行` : ""}`,
+    });
+  }
   const used = caseRefNumbers(upload.caseText);
   if (used.length === 0 && blocks && blocks.length > 0) {
     issues.push({

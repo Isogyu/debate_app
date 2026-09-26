@@ -35,8 +35,13 @@ export async function stepSourcePlan(ctx: StepContext) {
   const materials = new Map((await loadMaterialsFor(variant)).map((m) => [m.id, m]));
   const categories = (await loadCategories(ctx.projectId)).map((c) => c.name);
 
+  // 計画を立てるのは AI が取得する資料だけ（コピー・手入力の資料には触れない）
+  const planned = variant.sourceRefs.filter(
+    (r) => materials.get(r.materialId)?.origin === "ai_fetched",
+  );
+  if (planned.length === 0) return meter.total;
   const slotsJson = JSON.stringify(
-    variant.sourceRefs.map((r) => ({
+    planned.map((r) => ({
       slot: String(r.number),
       provesWhat: materials.get(r.materialId)?.provesWhat ?? "",
       kind: materials.get(r.materialId)?.sourceType,
@@ -58,8 +63,10 @@ export async function stepSourcePlan(ctx: StepContext) {
   const digitsOf = (v: string) => v.replace(/\D/g, "");
   const bySlot = new Map(data.requirements.map((r) => [digitsOf(r.slot) || r.slot, r]));
   const updated: SourceRequirement[] = [];
-  for (const [index, ref] of variant.sourceRefs.entries()) {
-    const info = bySlot.get(String(ref.number)) ?? data.requirements[index];
+  for (const ref of variant.sourceRefs) {
+    const index = planned.indexOf(ref);
+    const info =
+      index < 0 ? undefined : (bySlot.get(String(ref.number)) ?? data.requirements[index]);
     if (!info) {
       updated.push(ref);
       continue;
@@ -145,8 +152,9 @@ export async function stepSourceFetch(ctx: StepContext) {
   for (const ref of variant.sourceRefs) {
     const m = materials.get(ref.materialId);
     if (!m) continue;
-    // 人が確認済みにした資料は取り直さない（再実行で上書きしない）
-    if (m.status === "verified") continue;
+    // 人が確認済みにした資料・過去テーマからコピーした資料・人が入れた資料は取り直さない
+    // （再実行で「作成手順」に上書きしてしまわないように）
+    if (m.status === "verified" || m.origin !== "ai_fetched") continue;
     const sourceType = m.sourceType as SourceType;
     const result = await acquireMaterial({ provesWhat: m.provesWhat, sourceType, ref }, meter, budget);
 

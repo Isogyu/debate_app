@@ -42,7 +42,11 @@ export function BodyTab({
   return (
     <div>
       {/* 時間は超過も余りすぎも減点なので、見ているあいだ常に出す */}
-      <SpeechMeter text={variant.debateCase.fullText} debateCase={variant.debateCase} />
+      <SpeechMeter
+        text={variant.debateCase.fullText}
+        debateCase={variant.debateCase}
+        adviseFixes={variant.origin === "generated"}
+      />
       <div className="mb-4 flex justify-end">
         <button
           onClick={() => setWordPreview(!wordPreview)}

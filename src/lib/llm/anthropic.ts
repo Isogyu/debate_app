@@ -18,6 +18,15 @@ import { LlmConfigError, LlmSchemaError, LlmTruncatedError } from "./provider";
 
 export const DEFAULT_MODEL = process.env.DEBATE_MODEL ?? "claude-sonnet-5";
 
+/**
+ * 高度な推論が要らない処理に使う軽いモデル（費用対策）。
+ * 使う場面: 登録立論の見出し行の判定、取得本文からの引用箇所・会議録・統計表の選択、Web検索。
+ * いずれも結果をコードで検査してから保存するので、精度が落ちても誤りは保存されない
+ * （照合に落ちた資料は「作成手順」に回る）。
+ */
+export const LIGHT_MODEL =
+  process.env.DEBATE_MODEL_LIGHT ?? "claude-haiku-4-5-20251001";
+
 /** 出力の既定上限。切れると必ずJSONが壊れるので余裕を持たせる */
 export const DEFAULT_MAX_TOKENS = 12000;
 
@@ -155,7 +164,8 @@ export class AnthropicProvider implements LlmProvider {
    * 検索結果ブロックから URL を直接拾い、モデルの文章は使わない。
    */
   async searchWeb(req: WebSearchRequest): Promise<LlmResult<WebSearchHit[]>> {
-    const model = DEFAULT_MODEL;
+    // 検索語を投げて結果のURLを拾うだけなので軽いモデルで足りる
+    const model = LIGHT_MODEL;
     let response: Anthropic.Message;
     try {
       response = await getClient().messages.create({

@@ -14,6 +14,7 @@ import {
   sourceMaterials,
 } from "@/db/schema";
 import type { CaseVariant, JobParams } from "@/domain/types";
+import { allowedValuesFrom } from "@/domain/number-guard";
 import type { LlmUsage } from "@/lib/llm/provider";
 import { newId } from "@/lib/ids";
 
@@ -133,4 +134,16 @@ export function paragraphsOf(v: Pick<VariantRow, "debateCase">) {
     });
   });
   return out;
+}
+
+/**
+ * AI が書く派生文章（模範回答・雛形・戦い方）で使ってよい数字。
+ * 立論本文・資料の引用文・統計資料の値にあるものだけ（v6 要件 §1-9）。
+ */
+export async function allowedNumbersFor(variant: VariantRow): Promise<number[]> {
+  const materials = await loadMaterialsFor(variant);
+  return allowedValuesFrom(
+    [variant.debateCase.fullText, ...materials.map((m) => m.quote)],
+    materials.map((m) => m.statistic),
+  );
 }

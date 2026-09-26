@@ -62,6 +62,7 @@ export function SpeechTimer({
   chars,
   onMeasured,
   initialKind = "case",
+  adviseFixes = false,
 }: {
   /** 読み上げる文字数。渡したときだけ、実測から速度を割り出す */
   chars?: number;
@@ -69,6 +70,8 @@ export function SpeechTimer({
   onMeasured?: (charsPerMinute: number) => void;
   /** 最初に選んでおく種目 */
   initialKind?: SpeechKind;
+  /** 超過・余りのときに直し方まで示すか（生成立論を測るときだけ。v6 要件 F10） */
+  adviseFixes?: boolean;
 }) {
   const [kindKey, setKindKey] = useState<SpeechKind>(initialKind);
   const [elapsed, setElapsed] = useState(0);
@@ -329,7 +332,7 @@ export function SpeechTimer({
         <p className="mt-2 text-sm" style={{ color }}>
           <b>{formatDuration(Math.floor(remaining))}余りました。</b>
           30秒以上余ると減点されます。
-          {kind.key === "case" ? "早く読み終えたなら、分量を足してください。" : ""}
+          {adviseFixes && kind.key === "case" ? "早く読み終えたなら、分量を足してください。" : ""}
         </p>
       )}
 
@@ -349,7 +352,7 @@ export function SpeechTimer({
       {over && (
         <p className="mt-3 text-sm" style={{ color }}>
           <b>{kind.label}の持ち時間を超えました。</b>
-          減点されます。{kind.key === "case" ? "論点を1つ落としてください。" : ""}
+          減点されます。{adviseFixes && kind.key === "case" ? "論点を1つ落としてください。" : ""}
         </p>
       )}
 
