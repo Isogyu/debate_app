@@ -26,6 +26,7 @@ import {
   UsageMeter,
   type StepContext,
 } from "./common";
+import { todayJst } from "@/domain/jst";
 
 export async function stepSourcePlan(ctx: StepContext) {
   const meter = new UsageMeter();
@@ -147,7 +148,7 @@ export async function stepSourceFetch(ctx: StepContext) {
   const variant = await loadVariant(ctx.variantId);
   const materials = new Map((await loadMaterialsFor(variant)).map((m) => [m.id, m]));
   const budget = new FetchBudget(FETCH_BUDGET_PER_CASE);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayJst();
 
   for (const ref of variant.sourceRefs) {
     const m = materials.get(ref.materialId);

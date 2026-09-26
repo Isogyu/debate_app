@@ -221,7 +221,8 @@ export const MATERIAL_STATUS_LABELS: Record<MaterialStatus, string> = {
   verified: "確認済",
 };
 
-export type MaterialOrigin = "ai_fetched" | "uploaded" | "copied";
+/** manual = 作成手順を見て人が入力した資料 */
+export type MaterialOrigin = "ai_fetched" | "uploaded" | "copied" | "manual";
 
 /** 取得できなかった資料の作成手順（§3.4） */
 export interface SourceProcedure {

@@ -337,6 +337,15 @@ export async function copyMaterialToCase(opts: {
       throw new RuleError("コピーできるのは過去テーマの資料です。");
     }
 
+    // 同じ資料を同じ立論に二度コピーすると、同じ中身の資料が別番号で並ぶ
+    const already = tx
+      .select({ id: sourceMaterials.id })
+      .from(sourceMaterials)
+      .where(eq(sourceMaterials.copiedFromMaterialId, material.id))
+      .all()
+      .some((row) => target.sourceRefs.some((r) => r.materialId === row.id));
+    if (already) throw new RuleError("この資料は、この立論にすでにコピーしてあります。");
+
     const newMaterialId = newId("mat");
     const nextNumber = Math.max(0, ...target.sourceRefs.map((r) => r.number)) + 1;
     tx.insert(sourceMaterials)

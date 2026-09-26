@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { uploadCase, type ActionState } from "../cases/actions";
+import { keepInputs } from "@/components/keep-inputs";
 
 export function UploadForm({
   projectId,
@@ -12,7 +13,9 @@ export function UploadForm({
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(uploadCase, {});
   return (
-    <form action={action} className="space-y-6">
+    // 送信後も選んだ側・呼び名・ファイルを残す。エラーで出し直したときに
+    // 側が初期値へ戻り、反対の側で登録してしまう事故を防ぐ
+    <form onSubmit={keepInputs((fd) => action(fd))} className="space-y-6">
       <input type="hidden" name="projectId" value={projectId} />
       {state.error && (
         <p role="alert" className="rounded border-2 border-[var(--neg)] p-3 text-sm">
@@ -53,11 +56,11 @@ export function UploadForm({
           type="file"
           name="caseFile"
           required
-          accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept=".docx,.pdf,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           className="block w-full text-sm"
         />
         <span className="mt-1 block text-sm text-[var(--muted)]">
-          Word（.docx）か PDF。Ⅰ主張／Ⅱ理由／Ⅲ結論 の形の原稿を想定しています。
+          Word（.docx）か PDF（テキストファイルも可）。Ⅰ主張／Ⅱ理由／Ⅲ結論 の形の原稿を想定しています。
           スキャン画像だけのPDF（文字を選択できないもの）は取り込めません。
         </span>
       </label>
@@ -67,11 +70,12 @@ export function UploadForm({
         <input
           type="file"
           name="materialsFile"
-          accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept=".docx,.pdf,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           className="block w-full text-sm"
         />
         <span className="mt-1 block text-sm text-[var(--muted)]">
-          【資料1】【資料2】…の見出しで区切られた参考資料。立論の【資料N参照】と番号で対応付けます。
+          【資料1】【資料2】…の見出し、または「Ⅱ. 資料」の下の「1.」「2.」…の見出しで区切られた参考資料。
+          立論の【資料N参照】（（資料N））と番号で対応付けます。
           番号が合わないところは、取り込んだあとに知らせます。
         </span>
       </label>

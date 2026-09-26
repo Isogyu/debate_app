@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types tests/*.test.ts",
     "spike:sources": "tsx --conditions=react-server scripts/spike-sources.ts",
+    "diagnose:llm": "tsx --conditions=react-server scripts/diagnose-llm.ts",
     "smoke": "DEBATE_DATA_DIR=./data/smoke tsx --conditions=react-server scripts/smoke-pipeline.ts"
   },
   "dependencies": {

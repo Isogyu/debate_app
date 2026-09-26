@@ -306,12 +306,15 @@ async function attemptStep(
       if (err instanceof LlmSchemaError) {
         console.error("[generate] AIの生出力(先頭800字):", err.raw.slice(0, 800));
       }
+      const message = err instanceof Error ? err.message : "";
       lastError =
         err instanceof LlmSchemaError
-          ? `${GEN_STEP_LABELS[step]}の生成に失敗しました（${err.message}）。`
-          : err instanceof Error
-            ? err.message
-            : "原因不明のエラーが発生しました。";
+          ? // 形式の詳細（英語）はログに残し、画面には日本語だけを出す
+            `${GEN_STEP_LABELS[step]}の生成に失敗しました（AIの出力の形が想定と違いました）。`
+          : message && /[ぁ-んァ-ヶ一-龠]/.test(message)
+            ? message
+            : // 日本語でない内部のエラー（ライブラリ・DB）は、そのまま見せても分からない
+              `${GEN_STEP_LABELS[step]}の処理中に想定外のエラーが起きました。`;
     }
   }
 

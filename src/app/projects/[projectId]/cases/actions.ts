@@ -51,6 +51,7 @@ import { LlmConfigError, LlmSchemaError } from "@/lib/llm/provider";
 import { SYSTEM_BASE, regenerateClaimPrompt } from "@/lib/llm/prompts";
 import { ExtractError, extractUploadText } from "@/lib/text-extract";
 import { currentUserId, log, requireSession } from "@/lib/session";
+import { todayJst } from "@/domain/jst";
 
 export interface ActionState {
   error?: string;
@@ -296,8 +297,10 @@ export async function saveMaterial(
       url: url || null,
       quote,
       sourceDomain: url ? hostOf(url) : null,
-      lastCheckedAt: lastCheckedAt || nowIso().slice(0, 10),
+      lastCheckedAt: lastCheckedAt || todayJst(),
       withinAllowedSources: url ? isWithinAllowedSources(url) : false,
+      // 人が入れた資料。再実行の自動取得で上書きしない（steps-sources.ts）
+      origin: "manual",
       status: "verified",
       verifiedAt: nowIso(),
     })

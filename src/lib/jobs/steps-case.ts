@@ -156,7 +156,10 @@ export async function stepCaseOutline(ctx: StepContext) {
     .set({
       framework: data.framework,
       approach: data.approach,
-      label: `${data.framework}／${data.approach}`,
+      label: uniqueLabel(
+        `${data.framework}／${data.approach}`,
+        siblings.map((x) => x.label),
+      ),
       debateCase: {
         side: target.side,
         valuePremise: data.valuePremise,
@@ -391,4 +394,13 @@ export function applyParagraphEdits(
   };
   next.fullText = renderFullText(next);
   return next;
+}
+
+/** 同じ側に同じ呼び名があれば「（2）」のように番号を付けて見分けられるようにする */
+function uniqueLabel(base: string, taken: string[]): string {
+  if (!taken.includes(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}（${n}）`;
+    if (!taken.includes(candidate)) return candidate;
+  }
 }

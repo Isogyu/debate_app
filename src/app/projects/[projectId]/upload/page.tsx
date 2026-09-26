@@ -6,7 +6,8 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
-import { Breadcrumb, Header } from "@/components/chrome";
+import { Breadcrumb } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { requireSession } from "@/lib/session";
 import { UploadForm } from "./upload-form";
 

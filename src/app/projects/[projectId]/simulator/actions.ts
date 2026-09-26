@@ -163,6 +163,10 @@ export async function startPractice(
   let sessionId: string;
   try {
     const ctx = await loadContext(projectId, userVariantId, opponentVariantId);
+    // 過去テーマは閲覧のみ。練習は AI の費用もかかるので、現テーマでだけ始められる（§2 F1）
+    if (ctx.project.status !== "active") {
+      return { error: "過去テーマでは練習を始められません。現テーマの立論で練習してください。" };
+    }
     // 本文の構造がない立論（取り込み途中など）はAIが立脚できない
     if (
       ctx.userVariant.debateCase.sections.length === 0 ||

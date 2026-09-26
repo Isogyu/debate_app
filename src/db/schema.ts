@@ -130,7 +130,7 @@ export const sourceMaterials = sqliteTable(
     status: text("status", { enum: ["procedure", "unverified", "verified"] })
       .notNull()
       .default("procedure"),
-    origin: text("origin", { enum: ["ai_fetched", "uploaded", "copied"] })
+    origin: text("origin", { enum: ["ai_fetched", "uploaded", "copied", "manual"] })
       .notNull()
       .default("ai_fetched"),
     citation: text("citation"),

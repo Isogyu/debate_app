@@ -30,6 +30,7 @@ import { getLlmProvider, LIGHT_MODEL } from "@/lib/llm/anthropic";
 import * as P from "@/lib/llm/prompts";
 import { newId } from "@/lib/ids";
 import { loadVariant, UsageMeter, type StepContext } from "./common";
+import { todayJst } from "@/domain/jst";
 
 /** 出典のURLから資料の種類を推す */
 export function guessSourceType(url: string | undefined, citation: string): SourceType {
@@ -83,7 +84,7 @@ export async function stepImport(ctx: StepContext) {
   for (const ref of variant.sourceRefs) {
     await db.delete(sourceMaterials).where(eq(sourceMaterials.id, ref.materialId));
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayJst();
   for (const b of blocks ?? []) {
     if (refs.some((r) => r.number === b.number)) continue; // 番号の重複は指摘に回す
     const materialId = newId("mat");
@@ -96,7 +97,8 @@ export async function stepImport(ctx: StepContext) {
       status: "verified",
       origin: "uploaded",
       citation: b.citation || null,
-      quote: b.body || b.raw,
+      // 本文のない資料（出典だけ）の引用欄は空にする。出典と同じ文を二重に出さない
+      quote: b.body || null,
       url: b.url ?? null,
       sourceDomain: b.url ? hostOf(b.url) : null,
       lastCheckedAt: b.lastCheckedAt ?? null,
@@ -131,6 +133,13 @@ export async function stepImport(ctx: StepContext) {
   }
 
   const issues = numberingIssues(upload.caseText, blocks);
+  if (upload.materialsText && /^[\s　.．]*Ⅰ\s*[.．、]?\s*関連法令/m.test(upload.materialsText)) {
+    issues.push({
+      severity: "warning",
+      message:
+        "資料ファイルの「Ⅰ. 関連法令」には資料番号がないため、資料としては取り込んでいません（条文は立論の中の表記のまま残ります）。",
+    });
+  }
   if (coverage.outside.length > 0) {
     // 題名・チーム名など、主張の前・結論の後の行は本文に含めない。黙って落とさず知らせる
     issues.push({

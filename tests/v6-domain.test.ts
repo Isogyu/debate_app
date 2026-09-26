@@ -32,6 +32,7 @@ import {
   numberingIssues,
   parseCheckedDate,
   parseMaterialsText,
+  caseRefNumbers,
   checkStructureCoverage,
   repairStructure,
 } from "../src/domain/import-parse.ts";
@@ -491,4 +492,27 @@ test("実物の原稿（節の導入文・段落の続き）も、区切りを�
   assert.deepEqual(cov.overlapping, []);
   assert.deepEqual(repaired.sections[0].intro, [9, 9]);
   assert.deepEqual(repaired.sections[0].subsections[1].body, [15, 18]);
+});
+
+test("資料参照の表記ゆれ（全角数字・空白・改行・PDFの取り出し）も番号として読む", () => {
+  const text = "前提がある【資料３参照】。次に【資料 2 参照】。さらに【資料 1\n参照】。括弧の形（資料１）。";
+  assert.deepEqual(caseRefNumbers(text), [1, 2, 3]);
+});
+
+test("実物の参考資料（「Ⅱ. 資料」の下の番号見出し）を資料ごとに分け、出典を見分ける", async () => {
+  const fs = await import("node:fs");
+  const read = (f: string) =>
+    fs.readFileSync(new URL(`../docs/samples/${f}`, import.meta.url), "utf8");
+  const blocks = parseMaterialsText(read("623343068145516959_1113廃止賛成参考資料（修正版）.txt"));
+  assert.equal(blocks.length, 10);
+  assert.equal(blocks[0].number, 1);
+  assert.equal(blocks[0].title, "租税公平主義");
+  assert.match(blocks[0].citation, /金子宏『租税法/);
+  assert.match(blocks[0].body, /^「税負担は/);
+  // 立論の【資料1〜10参照】と過不足なく対応する
+  const issues = numberingIssues(read("623343056385212639_廃止賛成側立論　完成.txt"), blocks);
+  assert.deepEqual(issues, []);
+  // 反対側の完成版も同じ形式
+  const neg = parseMaterialsText(read("623343068262957347_1113廃止反対参考資料（修正版）.txt"));
+  assert.deepEqual(numberingIssues(read("623343056066445862_廃止反対側立論　完成.txt"), neg), []);
 });

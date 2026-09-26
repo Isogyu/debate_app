@@ -9,7 +9,8 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { caseVariants, projects } from "@/db/schema";
-import { Breadcrumb, Header } from "@/components/chrome";
+import { Breadcrumb } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { requireSession } from "@/lib/session";
 import { PracticeClient, type PracticeCase } from "./practice-client";
 

@@ -34,7 +34,15 @@ export const DEFAULT_MAX_TOKENS = 12000;
  * APIの失敗を、ゼミ生が読んで意味の分かる日本語にする。
  * 生のエラーには内部情報が混じるので、そのまま見せない（§6.3 エラー設計）。
  */
-function translateApiError(err: unknown): Error {
+/** API が返したエラーの本文（英語の説明文）。キーなどの秘密は含まれない */
+function apiErrorDetail(err: InstanceType<typeof Anthropic.APIError>): string {
+  const body = err.error as { error?: { type?: string; message?: string } } | undefined;
+  const type = body?.error?.type ?? "";
+  const message = body?.error?.message ?? err.message ?? "";
+  return [type, message].filter(Boolean).join(": ").slice(0, 300);
+}
+
+export function translateApiError(err: unknown): Error {
   // すでに意味のあるエラーになっているものは、そのまま通す。
   // ここで包み直すと「APIキーが設定されていません」という具体的な案内が
   // 「接続できませんでした」に化け、しかもリトライ対象に戻ってしまう
@@ -43,8 +51,31 @@ function translateApiError(err: unknown): Error {
   }
 
   if (!(err instanceof Anthropic.APIError)) {
+    // 原因を調べられるよう、サーバーのログには元のエラーを残す
+    console.error("[llm] API 呼び出し前後で失敗しました:", err instanceof Error ? err.message : err);
     return new Error(
       "AIに接続できませんでした。通信の状況を確認して、もう一度お試しください。",
+    );
+  }
+
+  const detail = apiErrorDetail(err);
+  // 画面の日本語だけでは原因が分からないので、APIの説明文をログに必ず残す
+  console.error(`[llm] API エラー ${err.status ?? "?"}: ${detail}`);
+
+  // 利用残高の不足は 400 で返る。リトライしても無駄なので設定エラーとして扱う
+  if (/credit balance|billing|purchase credits/i.test(detail)) {
+    return new LlmConfigError(
+      "Anthropic API の利用残高（クレジット）が不足しています。管理者が Anthropic Console の Billing で残高を追加してください。",
+    );
+  }
+  if (/usage limit|spend limit|monthly limit/i.test(detail)) {
+    return new LlmConfigError(
+      "Anthropic API の利用上限に達しています。管理者が Anthropic Console の Limits を確認してください。",
+    );
+  }
+  if (/model/i.test(detail) && /not.?found|does not exist|invalid/i.test(detail)) {
+    return new LlmConfigError(
+      `指定したAIモデルが使えません（${detail}）。管理者が DEBATE_MODEL / DEBATE_MODEL_LIGHT の設定を確認してください。`,
     );
   }
 
@@ -55,13 +86,18 @@ function translateApiError(err: unknown): Error {
       return new LlmConfigError(
         "APIキーが正しくないか、利用できない状態です。管理者に連絡してください。",
       );
+    case 404:
+      return new LlmConfigError(
+        `AIモデルまたは機能が見つかりません（${detail}）。管理者に連絡してください。`,
+      );
     case 429:
       return new Error(
         "AIへの問い合わせが混み合っています。少し待ってからもう一度お試しください。",
       );
     case 400:
+      // 原因（英語の説明）を添える。管理者が調べる手がかりになる
       return new Error(
-        "AIへの依頼内容に問題がありました。管理者に連絡してください。",
+        `AIへの依頼内容に問題がありました（${detail || "詳細不明"}）。管理者に連絡してください。`,
       );
     default:
       if (err.status && err.status >= 500) {
@@ -69,7 +105,7 @@ function translateApiError(err: unknown): Error {
           "AI側で問題が起きています。時間をおいてもう一度お試しください。",
         );
       }
-      return new Error("AIへの問い合わせに失敗しました。もう一度お試しください。");
+      return new Error(`AIへの問い合わせに失敗しました（${detail}）。もう一度お試しください。`);
   }
 }
 
@@ -214,6 +250,17 @@ let provider: LlmProvider | null = null;
 
 /** 呼び出し側はここ経由でのみプロバイダを取得する */
 export function getLlmProvider(): LlmProvider {
+  if (!provider && process.env.DEBATE_FAKE_LLM === "1") {
+    // 画面の通し確認用。本番（Fly.io）では環境変数があっても使わない
+    if (process.env.FLY_APP_NAME) {
+      console.warn("[llm] DEBATE_FAKE_LLM は Fly.io 上では無視します");
+    } else {
+      // 動的 import だと同期で返せないので require する
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      provider = (require("./fake-provider") as typeof import("./fake-provider")).fakeProvider;
+      console.warn("[llm] 作り物の AI（DEBATE_FAKE_LLM=1）で動いています");
+    }
+  }
   provider ??= new AnthropicProvider();
   return provider;
 }

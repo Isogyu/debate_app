@@ -18,7 +18,8 @@ import {
   sourceMaterials,
   uploads,
 } from "@/db/schema";
-import { Breadcrumb, Header, OriginBadge, SideBadge } from "@/components/chrome";
+import { Breadcrumb, OriginBadge, SideBadge } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { JobStatus } from "@/components/job-status";
 import { VerifyToggle } from "@/components/verify-toggle";
 import { FlowchartView, type FlowNode } from "@/components/flowchart/flowchart-view";

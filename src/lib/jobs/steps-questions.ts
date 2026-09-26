@@ -285,7 +285,13 @@ export async function stepMoreQuestions(ctx: StepContext) {
   // 同趣旨の一次判定（文言がほぼ同じもの）はコードでも弾く
   const known = new Set(existing.map((n) => questionKey(n.question)));
   out.chains = out.chains.filter((c) => !known.has(questionKey(c.nodes[0]?.question ?? "")));
-  await saveChains(variant, p, out, "generated");
+  const saved = await saveChains(variant, p, out, "generated");
+  if (saved === 0) {
+    // 何も増えなかったことを知らせる（黙って終わると、押しても何も起きないように見える）
+    throw new Error(
+      "新しい質問が見つかりませんでした（既にある質問と同じ趣旨のものを除いた結果、0問でした）。別の段落で試してください。",
+    );
+  }
   await recomputeEightMinuteSet(variant.id);
   return meter.total;
 }

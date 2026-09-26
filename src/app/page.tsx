@@ -9,7 +9,7 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
-import { Header } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { requireSession } from "@/lib/session";
 import { PastThemes, ThemeView } from "./projects/[projectId]/theme-view";
 
