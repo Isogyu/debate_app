@@ -123,7 +123,7 @@ async function quoteFrom(
             : ""),
         schema: pickQuoteSchema,
         model: LIGHT_MODEL,
-        maxTokens: 2000,
+        maxTokens: 4000,
       }),
     );
     if (!picked.found || !picked.quote) return null;
@@ -182,7 +182,7 @@ async function acquireDiet(
       prompt: PS.pickSpeechPrompt(input.provesWhat, input.ref.plan?.whatToExtract ?? "", listed),
       schema: pickSpeechSchema,
       model: LIGHT_MODEL,
-      maxTokens: 2000,
+      maxTokens: 4000,
     }),
   );
   if (!picked.found || picked.index == null || !picked.quote) {
@@ -244,7 +244,7 @@ async function acquireStatistic(
       prompt: PS.pickStatTablePrompt(input.provesWhat, plan?.statisticSteps ?? [], tables),
       schema: pickStatTableSchema,
       model: LIGHT_MODEL,
-      maxTokens: 1000,
+      maxTokens: 2000,
     }),
   );
   const table = tables.find((t) => t.id === choice.tableId);
@@ -267,7 +267,7 @@ async function acquireStatistic(
         rows.map((r) => ({ key: r.key, label: estatRowLabel(r), value: r.rawValue, unit: r.unit })),
       ),
       schema: buildStatisticSchema,
-      maxTokens: 3000,
+      maxTokens: 6000,
     }),
   );
   if (!built.found || built.inputs.length === 0) {

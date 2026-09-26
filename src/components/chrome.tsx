@@ -5,25 +5,6 @@
 
 import Link from "next/link";
 
-export function Header() {
-  return (
-    <header className="border-b border-[var(--line)]">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link href="/" className="text-lg font-bold">
-          ディベート支援
-        </Link>
-        {/* 未実装の画面（練習問題・ガイド・管理）へのリンクは置かない。
-            押して404を見せるくらいなら、無い方がよい */}
-        <nav className="flex gap-4 text-sm">
-          <Link href="/" className="hover:underline">
-            現テーマ
-          </Link>
-        </nav>
-      </div>
-    </header>
-  );
-}
-
 export function Breadcrumb({
   items,
 }: {

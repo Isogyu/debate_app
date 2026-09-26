@@ -163,6 +163,10 @@ export async function startPractice(
   let sessionId: string;
   try {
     const ctx = await loadContext(projectId, userVariantId, opponentVariantId);
+    // 過去テーマは閲覧のみ。練習は AI の費用もかかるので、現テーマでだけ始められる（§2 F1）
+    if (ctx.project.status !== "active") {
+      return { error: "過去テーマでは練習を始められません。現テーマの立論で練習してください。" };
+    }
     // 本文の構造がない立論（取り込み途中など）はAIが立脚できない
     if (
       ctx.userVariant.debateCase.sections.length === 0 ||
@@ -178,7 +182,7 @@ export async function startPractice(
         system: systemFor(ctx, mode, keys.chains),
         prompt: PP.simulatorOpeningPrompt(),
         schema: simulatorReplySchema,
-        maxTokens: 1000,
+        maxTokens: 2000,
       });
       await recordUsage(projectId, usage);
       const nodeId = data.usedKey ? keysToIds([data.usedKey], keys.nodeIdByKey)[0] : undefined;
@@ -252,7 +256,7 @@ export async function sendTurn(
         text,
       ),
       schema: simulatorReplySchema,
-      maxTokens: 1000,
+      maxTokens: 2000,
     });
     await recordUsage(session.projectId, usage);
 
@@ -424,7 +428,7 @@ export async function finishPractice(
         closingFrame: await closingFrameFor(session),
       }),
       schema: simulatorFeedbackSchema,
-      maxTokens: 5000,
+      maxTokens: 10000,
     });
     await recordUsage(session.projectId, usage);
 

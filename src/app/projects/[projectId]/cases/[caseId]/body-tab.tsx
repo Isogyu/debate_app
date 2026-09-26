@@ -278,6 +278,11 @@ function ClaimCard({
           {error}
         </p>
       )}
+      {!error && regenState.message && !regenerating && (
+        <p role="status" className="mt-2 text-sm text-[#b45309]">
+          {regenState.message}
+        </p>
+      )}
       {!readOnly && (
         <div className="mt-3 flex justify-end gap-2">
           <button onClick={() => setEditing(true)} className="min-h-9 rounded border border-[var(--line)] px-3 text-sm">

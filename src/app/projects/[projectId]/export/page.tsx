@@ -10,7 +10,8 @@ import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { caseVariants, projects } from "@/db/schema";
-import { Breadcrumb, Header, SideBadge } from "@/components/chrome";
+import { Breadcrumb, SideBadge } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { CASE_ORIGIN_LABELS, SIDE_LABELS } from "@/domain/types";
 import { buildExportData } from "@/lib/export/data";
 import { requireSession } from "@/lib/session";
@@ -32,11 +33,14 @@ export default async function ExportPage({
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   if (!project) notFound();
 
-  const variants = await db
-    .select()
-    .from(caseVariants)
-    .where(eq(caseVariants.projectId, projectId))
-    .orderBy(asc(caseVariants.side), asc(caseVariants.createdAt));
+  // 本文ができていない立論（生成・取り込みの失敗など）は、出力しても空の文書になるので選ばせない
+  const variants = (
+    await db
+      .select()
+      .from(caseVariants)
+      .where(eq(caseVariants.projectId, projectId))
+      .orderBy(asc(caseVariants.side), asc(caseVariants.createdAt))
+  ).filter((v) => v.debateCase.sections.length > 0);
 
   const current = variants.find((v) => v.id === variant) ?? variants[0];
   const data = current ? await buildExportData(current.id, { projectId }) : null;

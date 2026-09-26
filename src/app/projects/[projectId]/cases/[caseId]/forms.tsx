@@ -3,6 +3,7 @@
 /** 立論詳細で使う小さなフォーム群 */
 
 import { useActionState, useState } from "react";
+import { keepInputs } from "@/components/keep-inputs";
 import {
   addQuestions,
   copyMaterial,
@@ -32,7 +33,7 @@ export function MaterialForm({
     );
   }
   return (
-    <form action={action} className="mt-3 space-y-3 rounded border-2 border-[var(--accent)] p-3">
+    <form onSubmit={keepInputs((fd) => action(fd))} className="mt-3 space-y-3 rounded border-2 border-[var(--accent)] p-3">
       <input type="hidden" name="materialId" value={materialId} />
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="variantId" value={variantId} />
@@ -106,7 +107,7 @@ export function MoreQuestionsButton({ variantId, claimId }: { variantId: string;
       <input type="hidden" name="claimId" value={claimId} />
       <button
         type="submit"
-        disabled={pending || state.ok}
+        disabled={pending}
         className="min-h-9 rounded border border-[var(--accent)] px-3 text-sm text-[var(--accent)] disabled:opacity-50"
       >
         {pending ? "依頼中…" : "この箇所の質疑をもっと"}

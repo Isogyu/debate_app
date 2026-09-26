@@ -12,6 +12,7 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { saveAnalysis, startGeneration, type FormState } from "../../actions";
 import { Term } from "@/components/chrome";
+import { keepInputs } from "@/components/keep-inputs";
 
 export interface AnalysisFormData {
   projectId: string;
@@ -26,7 +27,7 @@ export interface AnalysisFormData {
   };
 }
 
-export function AnalysisForm({ data }: { data: AnalysisFormData }) {
+export function AnalysisForm({ data, readOnly = false }: { data: AnalysisFormData; readOnly?: boolean }) {
   const [saveState, saveAction, saving] = useActionState<FormState, FormData>(
     saveAnalysis,
     {},
@@ -39,11 +40,16 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
     data.relatedLaws.length > 0 ? data.relatedLaws : [{ name: "", article: "" }],
   );
 
-  const busy = saving || generating;
+  // 過去テーマは閲覧のみ（§2 F1）。入力も送信もさせない
+  const busy = saving || generating || readOnly;
   const error = genState.error ?? saveState.error;
 
   return (
-    <form className="space-y-7">
+    <form
+      className="space-y-7"
+      // 送信後も入力を残す（React 19 の自動リセットで、追加した法令などが消えていた）
+      onSubmit={keepInputs((fd, intent) => (intent === "generate" ? genAction : saveAction)(fd))}
+    >
       <input type="hidden" name="projectId" value={data.projectId} />
 
       <p
@@ -57,6 +63,11 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
       {error && (
         <p role="alert" className="rounded border-2 border-[var(--neg)] p-3 text-sm">
           {error}
+        </p>
+      )}
+      {!error && saveState.ok && !saving && (
+        <p role="status" className="rounded border-2 border-[var(--aff)] p-3 text-sm">
+          保存しました。
         </p>
       )}
 
@@ -109,14 +120,14 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
                 defaultValue={law.name}
                 disabled={busy}
                 placeholder="法令名（例: 所得税法）"
-                className="flex-1 rounded border border-[var(--line)] p-2"
+                className="min-w-0 flex-1 rounded border border-[var(--line)] p-2"
               />
               <input
                 name="lawArticle"
                 defaultValue={law.article}
                 disabled={busy}
                 placeholder="条（例: 第56条）"
-                className="w-40 rounded border border-[var(--line)] p-2"
+                className="w-28 min-w-0 rounded border border-[var(--line)] p-2 sm:w-40"
               />
               <button
                 type="button"
@@ -210,6 +221,12 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
         </div>
       </section>
 
+      {readOnly ? (
+        <p className="border-t border-[var(--line)] pt-5 text-sm text-[var(--muted)]">
+          過去テーマのため閲覧のみです。
+        </p>
+      ) : (
+      <>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-5">
         <Link href="/" className="text-sm text-[var(--muted)] hover:underline">
           ← あとで続ける
@@ -217,7 +234,8 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
         <div className="flex gap-3">
           <button
             type="submit"
-            formAction={saveAction}
+            name="intent"
+            value="save"
             disabled={busy}
             className="rounded border-2 border-[var(--line)] px-5 py-3 disabled:opacity-60"
           >
@@ -225,7 +243,8 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
           </button>
           <button
             type="submit"
-            formAction={genAction}
+            name="intent"
+            value="generate"
             disabled={busy}
             className="rounded bg-[var(--accent)] px-6 py-3 font-bold text-white disabled:opacity-60"
           >
@@ -236,6 +255,8 @@ export function AnalysisForm({ data }: { data: AnalysisFormData }) {
       <p className="text-right text-sm text-[var(--muted)]">
         生成には数分かかります。開始したら画面を閉じても大丈夫です。
       </p>
+      </>
+      )}
     </form>
   );
 }

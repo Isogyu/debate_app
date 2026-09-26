@@ -40,6 +40,7 @@ function materialLabel(m: Material): { verified: boolean; label: string } {
   if (m.status === "procedure") return { verified: false, label: "作成手順（未完成）" };
   if (m.status === "verified") return { verified: true, label: "確認済" };
   if (m.origin === "copied") return { verified: false, label: "コピー（未確認）" };
+  if (m.origin === "manual") return { verified: false, label: "手入力（未確認）" };
   if (m.origin === "uploaded") return { verified: true, label: "登録資料" };
   return { verified: false, label: "AI取得（未確認）" };
 }

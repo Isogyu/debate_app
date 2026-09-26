@@ -25,7 +25,8 @@ import {
   type AttackPoint,
   type CrossExamNode,
 } from "@/domain/types";
-import { closingSchema, crossExamChainsSchema, strategySchema } from "@/domain/schemas";
+import { closingPerspectiveSchema, crossExamChainsSchema, strategySchema } from "@/domain/schemas";
+import { LlmTruncatedError } from "@/lib/llm/provider";
 import { guardText, hasDisallowedNumber } from "@/domain/number-guard";
 import type { z } from "zod";
 import { getLlmProvider } from "@/lib/llm/anthropic";
@@ -48,8 +49,8 @@ import {
 type ChainsOutput = z.infer<typeof crossExamChainsSchema>;
 type Paragraph = ReturnType<typeof paragraphsOf>[number];
 
-/** 1段落あたりに作る量。段落4〜6個で合計30〜40問程度になる */
-const PER_PARAGRAPH = "質問（連鎖の中の追及も含めて数える）の合計で7〜9個。うち連鎖を2〜3本含める";
+/** 1段落あたりに作る量。段落5〜6個で合計30問前後になる（1回の出力を小さくして途中切れを防ぐ） */
+const PER_PARAGRAPH = "質問（連鎖の中の追及も含めて数える）の合計で5〜7個。うち連鎖を1〜2本含める";
 
 async function loadNodes(variantId: string) {
   return db.select().from(crossExamNodes).where(eq(crossExamNodes.targetVariantId, variantId));
@@ -158,25 +159,42 @@ async function generateForParagraph(
   existingQuestions: string[],
   count: string,
   meter: UsageMeter,
-) {
-  return meter.add(
-    await getLlmProvider().generateStructured({
+): Promise<ChainsOutput> {
+  const ask = (points: AttackPoint[], howMany: string) =>
+    getLlmProvider().generateStructured({
       system: SYSTEM_BASE,
       prompt: PQ.crossExamParagraphPrompt({
         resolution,
         caseText: variant.debateCase.fullText,
         paragraphLabel: paragraph.label,
         paragraphText: paragraph.text,
-        attackPoints,
+        attackPoints: points,
         numberIssues,
         categories,
         existingQuestions,
-        count,
+        count: howMany,
       }),
       schema: crossExamChainsSchema,
-      maxTokens: 12000,
-    }),
-  );
+      maxTokens: 16000,
+    });
+
+  try {
+    return meter.add(await ask(attackPoints, count));
+  } catch (err) {
+    // 出力が長すぎて切れたら、攻撃点ごとに小さく分けて頼み直す（全部を失わないように）
+    if (!(err instanceof LlmTruncatedError) || attackPoints.length <= 1) throw err;
+    console.warn(`[questions] ${paragraph.label} の出力が長すぎたため、攻撃点ごとに分けて作り直します`);
+    const chains: ChainsOutput["chains"] = [];
+    for (const point of attackPoints) {
+      try {
+        chains.push(...meter.add(await ask([point], "この攻撃点で1〜2問（連鎖は1本まで）")).chains);
+      } catch (inner) {
+        if (!(inner instanceof LlmTruncatedError)) throw inner;
+        console.warn(`[questions] ${paragraph.label}／${point} は作れませんでした（出力が長すぎる）`);
+      }
+    }
+    return { chains };
+  }
 }
 
 /** 8分セットを選び直す（§4.2）。質疑を足したとき・練習で詰まったときにも呼ぶ */
@@ -285,7 +303,13 @@ export async function stepMoreQuestions(ctx: StepContext) {
   // 同趣旨の一次判定（文言がほぼ同じもの）はコードでも弾く
   const known = new Set(existing.map((n) => questionKey(n.question)));
   out.chains = out.chains.filter((c) => !known.has(questionKey(c.nodes[0]?.question ?? "")));
-  await saveChains(variant, p, out, "generated");
+  const saved = await saveChains(variant, p, out, "generated");
+  if (saved === 0) {
+    // 何も増えなかったことを知らせる（黙って終わると、押しても何も起きないように見える）
+    throw new Error(
+      "新しい質問が見つかりませんでした（既にある質問と同じ趣旨のものを除いた結果、0問でした）。別の段落で試してください。",
+    );
+  }
   await recomputeEightMinuteSet(variant.id);
   return meter.total;
 }
@@ -314,21 +338,25 @@ export async function stepClosing(ctx: StepContext) {
   const chains = (await chainDigest(variant.id)).slice(0, 6);
   const findings = await db.select().from(numberFindings).where(eq(numberFindings.variantId, variant.id));
 
-  const data = meter.add(
-    await getLlmProvider().generateStructured({
-      system: SYSTEM_BASE,
-      prompt: PQ.closingPrompt({
-        resolution: project.resolution,
-        sideLabel: SIDE_LABELS[variant.side],
-        opponentSideLabel: SIDE_LABELS[variant.side === "affirmative" ? "negative" : "affirmative"],
-        caseText: variant.debateCase.fullText,
-        chains,
-        weaknesses: findings.filter((f) => !f.resolution).slice(0, 6).map((f) => `${f.location}: ${f.message}`),
+  // 2つの立場の雛形を1回で頼むと長くなり途中で切れたので、1つずつ頼む
+  const ask = async (perspective: "own" | "opponent") =>
+    meter.add(
+      await getLlmProvider().generateStructured({
+        system: SYSTEM_BASE,
+        prompt: PQ.closingPrompt({
+          resolution: project.resolution,
+          sideLabel: SIDE_LABELS[variant.side],
+          opponentSideLabel: SIDE_LABELS[variant.side === "affirmative" ? "negative" : "affirmative"],
+          caseText: variant.debateCase.fullText,
+          chains,
+          weaknesses: findings.filter((f) => !f.resolution).slice(0, 6).map((f) => `${f.location}: ${f.message}`),
+          perspective,
+        }),
+        schema: closingPerspectiveSchema,
+        maxTokens: 8000,
       }),
-      schema: closingSchema,
-      maxTokens: 8000,
-    }),
-  );
+    );
+  const data = { own: await ask("own"), opponent: await ask("opponent") };
 
   const valid = new Set(chains.map((c) => c.chainId));
   const allowed = await allowedNumbersFor(variant);
@@ -382,7 +410,7 @@ export async function stepStrategy(ctx: StepContext) {
         materialNotes,
       }),
       schema: strategySchema,
-      maxTokens: 5000,
+      maxTokens: 8000,
     }),
   );
 

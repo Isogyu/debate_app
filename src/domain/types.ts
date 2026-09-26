@@ -109,6 +109,9 @@ export const IMPORT_STEPS: GenStep[] = [
 /** 「この箇所をもっと」（§4.1） */
 export const MORE_QUESTION_STEPS: GenStep[] = ["more_questions"];
 
+/** 資料だけを登録したあと、数字の検査をやり直す */
+export const RECHECK_STEPS: GenStep[] = ["number_check"];
+
 /** 画面に出す日本語名。内部名は見せない */
 export const GEN_STEP_LABELS: Record<GenStep, string> = {
   analysis: "論題の分析",
@@ -124,7 +127,7 @@ export const GEN_STEP_LABELS: Record<GenStep, string> = {
   more_questions: "質疑の追加",
 };
 
-export type JobKind = "analysis" | "generate" | "import" | "more_questions";
+export type JobKind = "analysis" | "generate" | "import" | "more_questions" | "recheck";
 
 export type ThemeStatus = "active" | "archived";
 
@@ -221,7 +224,8 @@ export const MATERIAL_STATUS_LABELS: Record<MaterialStatus, string> = {
   verified: "確認済",
 };
 
-export type MaterialOrigin = "ai_fetched" | "uploaded" | "copied";
+/** manual = 作成手順を見て人が入力した資料 */
+export type MaterialOrigin = "ai_fetched" | "uploaded" | "copied" | "manual";
 
 /** 取得できなかった資料の作成手順（§3.4） */
 export interface SourceProcedure {

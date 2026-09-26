@@ -15,7 +15,8 @@ import {
   projects,
   uploads,
 } from "@/db/schema";
-import { Header, OriginBadge, SideBadge } from "@/components/chrome";
+import { OriginBadge, SideBadge } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { JobStatus, type JobView } from "@/components/job-status";
 import { estimateSpeech } from "@/domain/speech";
 import {
@@ -26,6 +27,7 @@ import {
 } from "@/domain/types";
 import { progressOf } from "@/lib/jobs/runner";
 import { GenerateButton } from "./generate-button";
+import { formatJstDate } from "@/domain/jst";
 
 export function toJobView(job: typeof generationJobs.$inferSelect): JobView {
   return {
@@ -185,6 +187,12 @@ export async function ThemeView({ projectId }: { projectId: string }) {
                     >
                       自作の立論を登録
                     </Link>
+                    <Link
+                      href={`/projects/${projectId}/upload?side=${side}&category=materials`}
+                      className="inline-flex min-h-11 items-center rounded border border-[var(--line)] px-4 text-sm hover:border-[var(--accent)]"
+                    >
+                      自作の資料を登録
+                    </Link>
                   </div>
                 )}
               </section>
@@ -234,7 +242,7 @@ export function PastThemes({
               {t.resolution}
             </Link>
             {t.archivedAt && (
-              <span className="ml-2 text-xs text-[var(--muted)]">（{t.archivedAt.slice(0, 10)}まで）</span>
+              <span className="ml-2 text-xs text-[var(--muted)]">（{formatJstDate(t.archivedAt)}まで）</span>
             )}
           </li>
         ))}

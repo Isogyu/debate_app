@@ -15,7 +15,8 @@ import type { DebateCase } from "./types";
  * どちらも読み上げず、資料へのリンクになる。両方を認識する。
  */
 export const REF_MARKER_GLOBAL =
-  /【([^】]*?)資料(\d+)参照】|[（(]\s*資料\s*(\d+)\s*[）)]/g;
+  // 全角数字（【資料３参照】）と、空白・改行をはさむ形（PDF から取り出すと「【資料 1\n参照】」になる）も認める
+  /【([^】]*?)資料[\s　]*([0-9０-９]+)[\s　]*参照[\s　]*】|[（(][\s　]*資料[\s　]*([0-9０-９]+)[\s　]*[）)]/g;
 
 /** マーカー1つ分の解析結果 */
 export interface RefMarkerMatch {
@@ -31,7 +32,7 @@ export interface RefMarkerMatch {
 export function* matchRefMarkers(text: string): Generator<RefMarkerMatch> {
   for (const m of text.matchAll(REF_MARKER_GLOBAL)) {
     // 【…参照】形なら2番目、括弧だけの形なら3番目に番号が入る
-    const number = Number(m[2] ?? m[3]);
+    const number = Number((m[2] ?? m[3] ?? "").normalize("NFKC"));
     if (!Number.isFinite(number)) continue;
     yield {
       value: m[0],

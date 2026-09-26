@@ -9,10 +9,12 @@ import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { caseVariants, practiceSessions, projects } from "@/db/schema";
-import { Breadcrumb, Header } from "@/components/chrome";
+import { Breadcrumb } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { CASE_ORIGIN_LABELS, SIDE_LABELS } from "@/domain/types";
 import { requireSession } from "@/lib/session";
 import { SimulatorClient, type VariantOption } from "./simulator-client";
+import { formatJstDateTime } from "@/domain/jst";
 
 export const dynamic = "force-dynamic";
 
@@ -98,9 +100,15 @@ export default async function SimulatorPage({
           )}
         </div>
 
+        {project.status !== "active" && !current && (
+          <p className="mb-4 rounded border border-[var(--line)] p-3 text-sm text-[var(--muted)]">
+            過去テーマのため、新しい練習は始められません（これまでの練習の記録は見られます）。
+          </p>
+        )}
         <SimulatorClient
           projectId={projectId}
-          variants={variants}
+          // 過去テーマでは練習を始められない（閲覧のみ）
+          variants={project.status === "active" ? variants : []}
           initialSession={
             current
               ? {
@@ -131,7 +139,7 @@ export default async function SimulatorPage({
                   >
                     <span className="font-bold">{MODE_LABELS[s.mode]}</span>
                     <span className="ml-2 text-[var(--muted)]">
-                      {s.createdAt.slice(0, 16).replace("T", " ")}／やり取り{" "}
+                      {formatJstDateTime(s.createdAt)}／やり取り{" "}
                       {s.turns.filter((t) => t.speaker === "user").length} 回
                       {s.finishedAt ? "／講評あり" : "／途中"}
                     </span>

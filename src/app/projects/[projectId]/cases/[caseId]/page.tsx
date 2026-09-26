@@ -18,7 +18,8 @@ import {
   sourceMaterials,
   uploads,
 } from "@/db/schema";
-import { Breadcrumb, Header, OriginBadge, SideBadge } from "@/components/chrome";
+import { Breadcrumb, OriginBadge, SideBadge } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { JobStatus } from "@/components/job-status";
 import { VerifyToggle } from "@/components/verify-toggle";
 import { FlowchartView, type FlowNode } from "@/components/flowchart/flowchart-view";
@@ -45,7 +46,7 @@ export default async function CasePage({
   searchParams,
 }: {
   params: Promise<{ projectId: string; caseId: string }>;
-  searchParams: Promise<{ tab?: string; view?: string }>;
+  searchParams: Promise<{ tab?: string; view?: string; notice?: string }>;
 }) {
   await requireSession();
   const { projectId, caseId } = await params;
@@ -84,6 +85,11 @@ export default async function CasePage({
             { label: title },
           ]}
         />
+        {sp.notice && (
+          <p role="status" className="mb-4 rounded border-2 border-[var(--aff)] p-3 text-sm">
+            {sp.notice.slice(0, 200)}
+          </p>
+        )}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <SideBadge side={variant.side} />
           <OriginBadge origin={variant.origin} />
@@ -209,6 +215,17 @@ async function TabContent({
       }
     }
     return (
+      <>
+        {!archived && variant.debateCase.sections.length > 0 && (
+          <p className="mb-4">
+            <Link
+              href={`/projects/${projectId}/upload?category=materials&variant=${variant.id}`}
+              className="inline-flex min-h-11 items-center rounded border border-[var(--accent)] px-4 text-sm font-bold text-[var(--accent)]"
+            >
+              自作の資料をこの立論に登録する
+            </Link>
+          </p>
+        )}
       <SourcesTab
         projectId={projectId}
         variantId={variant.id}
@@ -217,6 +234,7 @@ async function TabContent({
         archived={archived}
         copyTargets={copyTargets}
       />
+      </>
     );
   }
 

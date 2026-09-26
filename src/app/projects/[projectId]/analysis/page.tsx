@@ -9,7 +9,8 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { issueCategories, projects } from "@/db/schema";
-import { Breadcrumb, Header } from "@/components/chrome";
+import { Breadcrumb } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { latestAnalysisJob } from "@/lib/jobs/runner";
 import { AnalysisForm } from "./analysis-form";
 import { requireSession } from "@/lib/session";
@@ -59,6 +60,7 @@ export default async function AnalysisPage({
 
         {project.analysis ? (
           <AnalysisForm
+            readOnly={project.status !== "active"}
             data={{
               projectId,
               resolution: project.resolution,

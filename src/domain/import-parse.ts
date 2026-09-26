@@ -43,21 +43,54 @@ export function parseCheckedDate(text: string): string | undefined {
   return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
 }
 
+/** 「Ⅱ. 資料」「Ⅱ　参考資料」のような、資料の部の見出し */
+const MATERIALS_PART_HEADING = /^[\s　.．]*Ⅱ\s*[.．、]?\s*(参考)?資料/;
+/** 「1. 租税公平主義」「4.「公平」とは」のような番号見出し（資料の部の中だけで使う） */
+const NUMBERED_HEADING = /^[\s　]*([0-9０-９]{1,3})\s*[.．、]\s*(.*)$/;
+
+/** 書誌の行か（著者『書名』（出版社・2021年）12頁 のような出典） */
+function looksLikeCitation(line: string): boolean {
+  const t = line.normalize("NFKC").trim();
+  if (!t || t.startsWith("「") || t.length > 200) return false;
+  return /(\d{4}\s*年|\d+\s*頁|\d+\s*号|第\s*\d+\s*版|〔第)/.test(t) && /[『「」』]|白書|調査|報告|統計/.test(t);
+}
+
+/**
+ * 資料ファイルを資料ごとに分ける。実物には2つの書き方がある（docs/samples）。
+ *  - 【資料1】【資料2】… の見出し
+ *  - 「Ⅱ. 資料」の下の「1. …」「2. …」の番号見出し（前に「Ⅰ. 関連法令」の部がある形）
+ */
 export function parseMaterialsText(text: string): MaterialBlock[] {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  const blocks: { number: number; lines: string[] }[] = [];
-  for (const line of lines) {
-    const m = line.match(MATERIAL_HEADING);
-    if (m) {
-      const number = Number(m[1].normalize("NFKC"));
-      const rest = line.replace(MATERIAL_HEADING, "").trim();
-      blocks.push({ number, lines: rest ? [rest] : [] });
-    } else if (blocks.length > 0) {
-      blocks[blocks.length - 1].lines.push(line);
+  const blocks: { number: number; heading?: string; lines: string[] }[] = [];
+  const bracketStyle = lines.some((l) => MATERIAL_HEADING.test(l));
+
+  if (bracketStyle) {
+    for (const line of lines) {
+      const m = line.match(MATERIAL_HEADING);
+      if (m) {
+        const number = Number(m[1].normalize("NFKC"));
+        const rest = line.replace(MATERIAL_HEADING, "").trim();
+        blocks.push({ number, lines: rest ? [rest] : [] });
+      } else if (blocks.length > 0) {
+        blocks[blocks.length - 1].lines.push(line);
+      }
+    }
+  } else {
+    // 番号見出しの形。「Ⅱ. 資料」があればその後ろだけを見る（前の「Ⅰ. 関連法令」の 1. 2. と混ざらないように）
+    const partStart = lines.findIndex((l) => MATERIALS_PART_HEADING.test(l));
+    const from = partStart >= 0 ? partStart + 1 : lines.some((l) => /^[\s　.．]*Ⅰ/.test(l)) ? lines.length : 0;
+    for (const line of lines.slice(from)) {
+      const m = line.match(NUMBERED_HEADING);
+      if (m) {
+        blocks.push({ number: Number(m[1].normalize("NFKC")), heading: m[2].trim(), lines: [] });
+      } else if (blocks.length > 0) {
+        blocks[blocks.length - 1].lines.push(line);
+      }
     }
   }
 
-  return blocks.map(({ number, lines: bl }) => {
+  return blocks.map(({ number, heading, lines: bl }) => {
     const nonEmpty = bl.map((l) => l.trim()).filter(Boolean);
     const raw = bl.join("\n").trim();
     const urlLineIndex = nonEmpty.findIndex((l) => URL_PATTERN.test(l));
@@ -66,9 +99,16 @@ export function parseMaterialsText(text: string): MaterialBlock[] {
 
     // 出典の行: URLの行とその直前の行（書名・発行者）、確認日の行
     const citationIdx = new Set<number>();
+    // URL の行だけで出典が完結している（「（出典：e-Gov法令検索 所得税法 https://…）」）なら前の行は本文。
+    // URL だけの行なら、前の行が書名・発行者
+    const urlLineHasTitle =
+      urlLineIndex >= 0 &&
+      nonEmpty[urlLineIndex]
+        .replace(URL_PATTERN, "")
+        .replace(/[（(）)\s　:：]|出典|最終確認日|確認日|\d{4}年\d{1,2}月\d{1,2}日/g, "").length >= 4;
     if (urlLineIndex >= 0) {
       citationIdx.add(urlLineIndex);
-      if (urlLineIndex > 0) citationIdx.add(urlLineIndex - 1);
+      if (urlLineIndex > 0 && !urlLineHasTitle) citationIdx.add(urlLineIndex - 1);
     }
     nonEmpty.forEach((l, i) => {
       if (parseCheckedDate(l)) citationIdx.add(i);
@@ -77,6 +117,12 @@ export function parseMaterialsText(text: string): MaterialBlock[] {
     nonEmpty.forEach((l, i) => {
       if (/^(出典|出所|資料出所)\s*[:：]/.test(l.normalize("NFKC"))) citationIdx.add(i);
     });
+    // URL のない書籍・論文の出典（著者『書名』（出版社・年）頁）
+    if (urlLineIndex < 0) {
+      nonEmpty.forEach((l, i) => {
+        if (looksLikeCitation(l)) citationIdx.add(i);
+      });
+    }
 
     // URL と確認日は別の欄に持つので、出典の文からは取り除く（二重に表示しない）
     const citation = nonEmpty
@@ -85,13 +131,18 @@ export function parseMaterialsText(text: string): MaterialBlock[] {
         l
           .replace(new RegExp(URL_PATTERN.source, "g"), "")
           .replace(/[（(]?\s*(最終)?(確認|閲覧|アクセス)日?\s*[:：]?[^）)]*[）)]?/g, "")
+          // URL を抜いたあとに残る空の括弧と余分な空白
+          .replace(/[（(][\s　:：]*[）)]/g, "")
+          .replace(/[\s　]+([）)])/g, "$1")
+          .replace(/[\s　]{2,}/g, " ")
           .trim(),
       )
       .filter(Boolean)
       .join("\n");
     const body = nonEmpty.filter((_, i) => !citationIdx.has(i)).join("\n");
     const title =
-      (urlLineIndex > 0 ? nonEmpty[urlLineIndex - 1] : nonEmpty[0]) ?? `資料${number}`;
+      heading ||
+      ((urlLineIndex > 0 && !urlLineHasTitle ? nonEmpty[urlLineIndex - 1] : nonEmpty[0]) ?? `資料${number}`);
 
     return { number, title: title.slice(0, 120), citation, url, lastCheckedAt, body, raw };
   });
@@ -134,7 +185,7 @@ function sliceLines(lines: string[], [a, b]: [number, number]): string {
 export function cleanHeading(line: string): string {
   return line
     .trim()
-    .replace(/^[ⅠⅡⅢⅣⅤ]+\s*[.．、]?\s*/, "")
+    .replace(/^[.．・\s　]*[ⅠⅡⅢⅣⅤ]+\s*[.．、]?\s*/, "")
     .replace(/^[0-9０-９]+\s*[.．、)）]\s*/, "")
     .replace(/^[（(]\s*[0-9０-９]+\s*[）)]\s*/, "")
     .trim();
@@ -143,7 +194,7 @@ export function cleanHeading(line: string): string {
 /** 見出しの Ⅰ／Ⅱ／Ⅲ 行そのものは本文に入れない */
 function stripFrameHeading(text: string): string {
   return text
-    .replace(/^[ⅠⅡⅢⅣ]\s*[.．、]?\s*(主張|理由|結論|再主張)\s*/, "")
+    .replace(/^[.．・\s　]*[ⅠⅡⅢⅣ]\s*[.．、]?\s*(主張|理由|結論|再主張)\s*/, "")
     .trim();
 }
 
@@ -188,7 +239,8 @@ export function applyCaseStructure(
 
 /** Ⅰ／Ⅱ／Ⅲ の枠の見出しだけの行（本文ではない） */
 function isFrameHeadingLine(line: string): boolean {
-  return /^[ⅠⅡⅢⅣ]\s*[.．、]?\s*(主張|理由|結論|再主張)?\s*$/.test(line.trim());
+  // PDF から取り出すと記号の順序が入れ替わり「.Ⅰ 主張」になることがある
+  return /^[.．・\s　]*[ⅠⅡⅢⅣ]\s*[.．、]?\s*(主張|理由|結論|再主張)?\s*[.．]?$/.test(line.trim());
 }
 
 export interface StructureCoverage {
@@ -334,7 +386,7 @@ export function numberingIssues(
   if (missing.length > 0) {
     issues.push({
       severity: "error",
-      message: `立論にある【資料${missing.join("】【資料")}参照】に対応する資料が、資料ファイルにありません。`,
+      message: `立論にある${missing.map((n) => `【資料${n}参照】`).join("")}に対応する資料が、資料ファイルにありません。`,
     });
   }
   const unused = [...declared].filter((n) => !used.includes(n)).sort((a, b) => a - b);
@@ -356,7 +408,8 @@ export function numberingIssues(
   if (materials.length === 0) {
     issues.push({
       severity: "warning",
-      message: "資料ファイルから【資料N】の見出しが見つかりませんでした。見出しの書き方を確認してください。",
+      message:
+        "資料ファイルから資料の見出しが見つかりませんでした。【資料1】の形か、「Ⅱ. 資料」の下に「1.」「2.」…の番号を付けた見出しにしてください。",
     });
   }
   return issues;

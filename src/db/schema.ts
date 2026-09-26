@@ -130,7 +130,7 @@ export const sourceMaterials = sqliteTable(
     status: text("status", { enum: ["procedure", "unverified", "verified"] })
       .notNull()
       .default("procedure"),
-    origin: text("origin", { enum: ["ai_fetched", "uploaded", "copied"] })
+    origin: text("origin", { enum: ["ai_fetched", "uploaded", "copied", "manual"] })
       .notNull()
       .default("ai_fetched"),
     citation: text("citation"),
@@ -300,7 +300,7 @@ export const generationJobs = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     kind: text("kind", {
-      enum: ["analysis", "generate", "import", "more_questions"],
+      enum: ["analysis", "generate", "import", "more_questions", "recheck"],
     }).notNull(),
     variantId: text("variant_id"),
     params: text("params", { mode: "json" }).$type<JobParams>(),

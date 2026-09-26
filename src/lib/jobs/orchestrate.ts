@@ -16,6 +16,11 @@ import {
 } from "@/db/schema";
 import { MAX_GENERATED_PER_SIDE, type Side } from "@/domain/types";
 import { newId, nowIso } from "@/lib/ids";
+import { parseMaterialsText } from "@/domain/import-parse";
+import { matchRefMarkers } from "@/domain/case-format";
+import { hostOf, isWithinAllowedSources } from "@/domain/source-whitelist";
+import { todayJst } from "@/domain/jst";
+import { guessSourceType } from "./steps-import";
 import {
   createJobTx,
   hasActiveJobTx,
@@ -337,6 +342,15 @@ export async function copyMaterialToCase(opts: {
       throw new RuleError("コピーできるのは過去テーマの資料です。");
     }
 
+    // 同じ資料を同じ立論に二度コピーすると、同じ中身の資料が別番号で並ぶ
+    const already = tx
+      .select({ id: sourceMaterials.id })
+      .from(sourceMaterials)
+      .where(eq(sourceMaterials.copiedFromMaterialId, material.id))
+      .all()
+      .some((row) => target.sourceRefs.some((r) => r.materialId === row.id));
+    if (already) throw new RuleError("この資料は、この立論にすでにコピーしてあります。");
+
     const newMaterialId = newId("mat");
     const nextNumber = Math.max(0, ...target.sourceRefs.map((r) => r.number)) + 1;
     tx.insert(sourceMaterials)
@@ -371,6 +385,123 @@ export async function copyMaterialToCase(opts: {
       .run();
     return nextNumber;
   });
+}
+
+// ── 資料だけの登録（カテゴリ「資料」） ─────────────────
+export interface MaterialImportResult {
+  added: number[];
+  replaced: number[];
+}
+
+/**
+ * 既にある立論に、自作の資料を登録する（立論の本文は触らない）。
+ *  - 【資料N】の番号が付いた資料は、その番号の資料として入れる。
+ *    同じ番号の資料が既にあれば中身を置き換える（AI の作成手順しかない資料を、自分で見つけた資料にする等）
+ *  - 番号が見つからないファイルは、ファイル全体を1つの資料として末尾の番号に足す
+ * 登録後、数字の検査だけをやり直す（出典に結びつく数字が変わるため）。
+ */
+export async function importMaterialsToCase(opts: {
+  variantId: string;
+  projectId: string;
+  fileName: string;
+  text: string;
+  userId: string;
+}): Promise<MaterialImportResult> {
+  const parsed = parseMaterialsText(opts.text);
+  const trimmed = opts.text.trim();
+  if (!trimmed) throw new RuleError("資料のファイルに文字が見つかりませんでした。");
+  const firstLine = trimmed.split(/\n/).find((l) => l.trim())?.trim() ?? opts.fileName;
+  const blocks =
+    parsed.length > 0
+      ? parsed.map((b) => ({ ...b, number: b.number as number | null }))
+      : [
+          {
+            number: null as number | null,
+            title: firstLine.slice(0, 120),
+            citation: "",
+            url: trimmed.match(/https?:\/\/[^\s）)」』"'<>]+/)?.[0],
+            lastCheckedAt: undefined as string | undefined,
+            body: trimmed,
+            raw: trimmed,
+          },
+        ];
+  const today = todayJst();
+
+  const { result, jobId } = db.transaction((tx) => {
+    const target = assertEditableVariantTx(tx, opts.variantId, { projectId: opts.projectId });
+    const refs = [...target.sourceRefs];
+    const added: number[] = [];
+    const replaced: number[] = [];
+    const seen = new Set<number>();
+
+    for (const b of blocks) {
+      if (b.number !== null && seen.has(b.number)) continue; // 同じ番号が2つあれば最初のものだけ
+      if (b.number !== null) seen.add(b.number);
+      const fields = {
+        provesWhat: b.title,
+        sourceType: guessSourceType(b.url, b.citation),
+        status: "verified" as const,
+        origin: "uploaded" as const,
+        citation: b.citation || null,
+        quote: b.body || null,
+        url: b.url ?? null,
+        sourceDomain: b.url ? hostOf(b.url) : null,
+        lastCheckedAt: b.lastCheckedAt ?? null,
+        withinAllowedSources: isWithinAllowedSources(b.url),
+        procedure: null,
+        statistic: null,
+        verifiedAt: today,
+      };
+      const existing = b.number !== null ? refs.find((r) => r.number === b.number) : undefined;
+      if (existing) {
+        tx.update(sourceMaterials).set(fields).where(eq(sourceMaterials.id, existing.materialId)).run();
+        replaced.push(existing.number);
+        continue;
+      }
+      const number = b.number ?? Math.max(0, ...refs.map((r) => r.number)) + 1;
+      const materialId = newId("mat");
+      tx.insert(sourceMaterials).values({ id: materialId, projectId: target.projectId, ...fields }).run();
+      // 本文に【資料N参照】（（資料N））がある段落と結びつける
+      const supports = target.debateCase.sections
+        .flatMap((sec) => sec.subsections)
+        .filter((c) => [...matchRefMarkers([c.claim, c.warrant, c.impact].join("\n"))].some((m) => m.number === number))
+        .map((c) => c.id);
+      refs.push({
+        id: newId("ref"),
+        number,
+        materialId,
+        supportsClaimIds: supports,
+        categoryIds: [],
+        description: "自作の資料として登録",
+        searchKeywords: [],
+        suggestedSourceIds: [],
+        formatHint: "quote",
+      });
+      added.push(number);
+    }
+    refs.sort((a, b) => a.number - b.number);
+    const debateCase = {
+      ...target.debateCase,
+      sections: target.debateCase.sections.map((sec) => ({
+        ...sec,
+        subsections: sec.subsections.map((c) => ({
+          ...c,
+          sourceRefIds: refs.filter((r) => r.supportsClaimIds.includes(c.id)).map((r) => r.id),
+        })),
+      })),
+    };
+    tx.update(caseVariants).set({ sourceRefs: refs, debateCase }).where(eq(caseVariants.id, target.id)).run();
+    const jobId = createJobTx(tx, {
+      kind: "recheck",
+      projectId: target.projectId,
+      variantId: target.id,
+      createdBy: opts.userId,
+    });
+    return { result: { added, replaced }, jobId };
+  });
+
+  background(runJob(jobId), "資料登録後の数字の検査");
+  return result;
 }
 
 // ── 編集できるかの確認 ─────────────────────────────────

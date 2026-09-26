@@ -5,7 +5,8 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
-import { Breadcrumb, Header } from "@/components/chrome";
+import { Breadcrumb } from "@/components/chrome";
+import { Header } from "@/components/header";
 import { activeJobs } from "@/lib/jobs/runner";
 import { requireSession } from "@/lib/session";
 import { WizardForm } from "./wizard-form";

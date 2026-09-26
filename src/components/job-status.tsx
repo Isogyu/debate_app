@@ -35,10 +35,17 @@ export function JobStatus({ initial, compact = false }: { initial: JobView; comp
   const router = useRouter();
   const [retryState, retryAction, retrying] = useActionState<ActionState, FormData>(retryJob, {});
 
-  // やり直しを押したら、また見に行き始める
-  const [retried, setRetried] = useState(false);
-  if (retryState.ok && !retried) {
-    setRetried(true);
+  // 画面が更新されてサーバーから新しい状態が届いたら、それに合わせる
+  const [prevInitial, setPrevInitial] = useState(initial);
+  if (initial !== prevInitial) {
+    setPrevInitial(initial);
+    setJob(initial);
+  }
+
+  // やり直しを押したら、また見に行き始める。2回目以降のやり直しでも同じ
+  const [seenRetry, setSeenRetry] = useState<ActionState | null>(null);
+  if (retryState.ok && retryState !== seenRetry) {
+    setSeenRetry(retryState);
     setJob({ ...job, status: "running" });
   }
 
