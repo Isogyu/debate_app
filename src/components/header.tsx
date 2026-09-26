@@ -19,6 +19,9 @@ export async function Header() {
           <Link href="/" className="hover:underline">
             現テーマ
           </Link>
+          <a href="/manual.html" target="_blank" rel="noopener" className="hover:underline">
+            使い方
+          </a>
           {name && (
             <form action={logout} className="flex items-center gap-2">
               <span className="hidden text-[var(--muted)] sm:inline">{name}</span>
