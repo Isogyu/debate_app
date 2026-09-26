@@ -72,12 +72,31 @@ export function estatAppId(): string | null {
   return process.env.ESTAT_APP_ID?.trim() || null;
 }
 
+/**
+ * e-Stat で統計表を探す。語をすべて AND にすると0件になりやすいので、
+ * 語の数を減らしながら探し、見つかった表を合わせて返す。
+ */
 export async function searchStatTables(keywords: string[], limit = 15): Promise<EstatTable[]> {
   const appId = estatAppId();
   if (!appId) return [];
-  const word = keywords.slice(0, 4).join(" AND ");
-  const url = `${ESTAT}/getStatsList?appId=${encodeURIComponent(appId)}&lang=J&searchWord=${encodeURIComponent(word)}&limit=${limit}`;
-  return parseEstatStatsList(await fetchJson(url));
+  const words = keywords.map((k) => k.trim()).filter(Boolean).slice(0, 4);
+  const tries: string[][] = [];
+  for (let n = Math.min(words.length, 3); n >= 1; n--) tries.push(words.slice(0, n));
+  if (words.length >= 2) tries.push([words[1]]);
+  const found = new Map<string, EstatTable>();
+  for (const t of tries) {
+    if (found.size >= limit) break;
+    const word = t.join(" AND ");
+    const url = `${ESTAT}/getStatsList?appId=${encodeURIComponent(appId)}&lang=J&searchWord=${encodeURIComponent(word)}&limit=${limit}`;
+    try {
+      for (const table of parseEstatStatsList(await fetchJson(url))) {
+        if (!found.has(table.id)) found.set(table.id, table);
+      }
+    } catch (err) {
+      console.error(`[sources] e-Stat の検索に失敗しました（${word}）:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return [...found.values()].slice(0, limit);
 }
 
 export async function fetchStatTable(tableId: string, limit = 3000): Promise<EstatData> {

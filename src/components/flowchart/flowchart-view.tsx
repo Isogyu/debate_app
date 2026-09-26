@@ -8,6 +8,7 @@
  * 1枚の大きな図にしないのは、30〜40問を一度に出すとスマホで迷子になるため。
  */
 
+import { ChainSelectButton } from "@/components/chain-select-button";
 import "@xyflow/react/dist/style.css";
 import {
   BaseEdge,
@@ -475,6 +476,7 @@ function ChainCard({
   selection,
   onSelect,
   onClear,
+  select,
 }: {
   chain: ChainGroup<FlowNode>;
   index: number;
@@ -484,6 +486,8 @@ function ChainCard({
   selection: Selection | null;
   onSelect: (sel: Selection) => void;
   onClear: () => void;
+  /** 「この質疑を使う」ボタン（閲覧のみのときは表示だけ） */
+  select: React.ReactNode;
 }) {
   const { root, nodes, chainId } = chain;
   const mine = selection?.chainId === chainId ? selection : null;
@@ -500,17 +504,13 @@ function ChainCard({
       <header className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--line)] p-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
-            {typeof root.setOrder === "number" && (
-              <span className="rounded bg-[var(--accent)] px-1.5 py-0.5 font-bold text-white">
-                8分セット {root.setOrder}番目
-              </span>
-            )}
+            {select}
             <span className="rounded border border-[var(--line)] px-1.5 py-0.5">{root.targetParagraph}</span>
             <span className="rounded border border-[var(--line)] px-1.5 py-0.5">
               {ATTACK_POINT_LABELS[root.attackPoint]}
             </span>
             <span className="text-[var(--muted)]">
-              優先度 {"★".repeat(Math.max(0, Math.min(5, root.priority)))}
+              おすすめ度 {"★".repeat(Math.max(0, Math.min(5, root.priority)))}
               <span className="sr-only">（5段階中{root.priority}）</span>
             </span>
             <span className="text-[var(--muted)]">{single ? "単発の質問" : `${nodes.length}問の連鎖`}</span>
@@ -591,9 +591,16 @@ function CollapsedBox({ kind, text, label }: { kind: BoxKind; text: string; labe
 export function FlowchartView({
   nodes,
   perspective: initialPerspective = "attack",
+  projectId,
+  variantId,
+  readOnly = true,
 }: {
   nodes: FlowNode[];
   perspective?: Perspective;
+  /** 渡すと、各連鎖に「この質疑を使う」ボタンを出す */
+  projectId?: string;
+  variantId?: string;
+  readOnly?: boolean;
 }) {
   const [perspective, setPerspective] = useState<Perspective>(initialPerspective);
   const [paragraph, setParagraph] = useState("");
@@ -602,7 +609,7 @@ export function FlowchartView({
 
   const allChains = useMemo(() => groupChains(nodes, perspective), [nodes, perspective]);
 
-  // 最初に開いておく連鎖: 8分セット。なければ先頭の3つ
+  // 最初に開いておく連鎖: 自分で選んだ質疑。なければ先頭の3つ
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const chains = groupChains(nodes, "attack");
     const set = chains.filter((c) => typeof c.root.setOrder === "number");
@@ -683,7 +690,7 @@ export function FlowchartView({
               disabled={!hasSet}
               onChange={(e) => setSetOnly(e.target.checked)}
             />
-            8分セットだけ
+            使う質疑だけ
           </label>
           <div className="flex gap-1">
             <button
@@ -705,8 +712,8 @@ export function FlowchartView({
         <FlowchartLegend />
         <p className="text-xs text-[var(--muted)]">
           {perspective === "attack"
-            ? "相手の立論を詰める順（8分セット → 優先度の高い順）に並んでいます。箱を押すと、そこまでの台本が出ます。"
-            : "突かれやすい順（優先度の高い順）に並んでいます。質問の箱の下に模範回答を出しています。"}
+            ? "使う質疑（選んだ順）→ おすすめ度の高い順 に並んでいます。箱を押すと、そこまでの台本が出ます。"
+            : "突かれやすい順（おすすめ度の高い順）に並んでいます。質問の箱の下に模範回答を出しています。"}
         </p>
       </div>
 
@@ -725,6 +732,20 @@ export function FlowchartView({
               selection={selection}
               onSelect={setSelection}
               onClear={() => setSelection(null)}
+              select={
+                !readOnly && projectId && variantId ? (
+                  <ChainSelectButton
+                    projectId={projectId}
+                    variantId={variantId}
+                    chainId={c.chainId}
+                    order={c.root.setOrder}
+                  />
+                ) : typeof c.root.setOrder === "number" ? (
+                  <span className="rounded bg-[var(--accent)] px-1.5 py-0.5 font-bold text-white">
+                    使う {c.root.setOrder}番目
+                  </span>
+                ) : null
+              }
             />
           ))}
         </div>

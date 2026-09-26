@@ -4,7 +4,7 @@
  * 質疑シミュレーター（v6 要件 F11・§4.3・§4.4）
  *
  * 登録・生成の全立論から「自分が守る立論」と「AIが演じる相手の立論」を選んで練習する。
- * defense（相手から質問される）では、AIは生成済みの質疑（8分セット・連鎖）を優先して使う。
+ * defense（相手から質問される）では、AIは生成済みの質疑（ゼミ生が選んだ「使う質疑」・連鎖）を優先して使う。
  * 終了時の講評と同じリクエストで、練習結果を質疑データへ反映する（§4.3）。
  */
 
@@ -41,7 +41,6 @@ import { LlmConfigError, LlmSchemaError, type LlmUsage } from "@/lib/llm/provide
 import * as PP from "@/lib/llm/prompts-practice";
 import { allowedNumbersFor, paragraphsOf } from "@/lib/jobs/common";
 import { guardText, hasDisallowedNumber } from "@/domain/number-guard";
-import { recomputeEightMinuteSet } from "@/lib/jobs/steps-questions";
 import { newId, nowIso } from "@/lib/ids";
 import { log, requireSession } from "@/lib/session";
 
@@ -299,7 +298,7 @@ async function closingFrameFor(session: SessionRow): Promise<string | undefined>
 
 /**
  * 練習結果を質疑データへ反映する（§4.3）。defense のときだけ。
- *  - 詰まった質問: stuckCount を1増やす（8分セットの選び直しで優先される）
+ *  - 詰まった質問: stuckCount を1増やす（質疑の一覧で前に出る）
  *  - 未登録の質問: 模範回答つきで「練習から追加」として保存（同趣旨は除く）
  */
 async function reflect(
@@ -359,9 +358,6 @@ async function reflect(
     addedNodeIds.push(id);
   }
 
-  if (stuckNodeIds.length > 0 || addedNodeIds.length > 0) {
-    await recomputeEightMinuteSet(userVariant.id);
-  }
   return { stuckNodeIds, addedNodeIds };
 }
 

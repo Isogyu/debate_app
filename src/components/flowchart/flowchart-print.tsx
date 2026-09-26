@@ -223,12 +223,12 @@ export async function FlowchartPrint({
                 <dd>{ATTACK_POINT_LABELS[root.attackPoint]}</dd>
               </div>
               <div className="flex gap-1">
-                <dt>優先度：</dt>
+                <dt>おすすめ度：</dt>
                 <dd>{root.priority}／5</dd>
               </div>
               <div className="flex gap-1">
-                <dt>8分セット：</dt>
-                <dd>{typeof root.setOrder === "number" ? `${root.setOrder}番目` : "対象外"}</dd>
+                <dt>使う質疑：</dt>
+                <dd>{typeof root.setOrder === "number" ? `${root.setOrder}番目` : "—"}</dd>
               </div>
               {root.goal && (
                 <div className="flex basis-full gap-1">

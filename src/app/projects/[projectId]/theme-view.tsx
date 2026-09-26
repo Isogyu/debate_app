@@ -125,6 +125,17 @@ export async function ThemeView({ projectId }: { projectId: string }) {
           </section>
         )}
 
+        {!archived && (
+          <div className="mb-4">
+            <Link
+              href={`/projects/${projectId}/upload`}
+              className="inline-flex min-h-12 items-center rounded border-2 border-[var(--accent)] px-5 font-bold text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white"
+            >
+              自作の立論・資料を登録する
+            </Link>
+          </div>
+        )}
+
         <div className="grid gap-6 md:grid-cols-2">
           {(["affirmative", "negative"] as Side[]).map((side) => {
             const list = variants.filter((v) => v.side === side);
@@ -181,18 +192,6 @@ export async function ThemeView({ projectId }: { projectId: string }) {
                       disabled={!project.analysis || awaitingReview}
                       first={generated === 0}
                     />
-                    <Link
-                      href={`/projects/${projectId}/upload?side=${side}`}
-                      className="inline-flex min-h-11 items-center rounded border border-[var(--line)] px-4 text-sm hover:border-[var(--accent)]"
-                    >
-                      自作の立論を登録
-                    </Link>
-                    <Link
-                      href={`/projects/${projectId}/upload?side=${side}&category=materials`}
-                      className="inline-flex min-h-11 items-center rounded border border-[var(--line)] px-4 text-sm hover:border-[var(--accent)]"
-                    >
-                      自作の資料を登録
-                    </Link>
                   </div>
                 )}
               </section>

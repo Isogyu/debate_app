@@ -3,7 +3,7 @@
  *
  * AI は常に「相手」を演じる。
  *  - attack  … 練習者が質問し、AI が相手の立論を守って答える
- *  - defense … AI が練習者の立論に質問する。生成済みの質疑（8分セット・連鎖）を優先して使う
+ *  - defense … AI が練習者の立論に質問する。生成済みの質疑（使う質疑・連鎖）を優先して使う
  *
  * 生成済みの質疑は DB の ID ではなく短いキー（q1…／c1…）で見せ、
  * どれを使ったかをキーで返させる（domain/practice.ts で ID に戻す）。
@@ -35,7 +35,7 @@ export function formatChains(chains: KeyedChain[], opts: { withModelAnswer: bool
   if (chains.length === 0) return "（生成済みの質疑はありません）";
   return chains
     .map((c) => {
-      const head = `■ 連鎖${c.key}${c.inEightMinuteSet ? "【8分セット】" : ""}｜${c.paragraph || "段落指定なし"}｜引き出したい結論: ${c.goal || "（未設定）"}`;
+      const head = `■ 連鎖${c.key}${c.inEightMinuteSet ? "【使う質疑】" : ""}｜${c.paragraph || "段落指定なし"}｜引き出したい結論: ${c.goal || "（未設定）"}`;
       const idToKey = new Map(c.nodes.map((n) => [n.node.id, n.key]));
       const lines = c.nodes.map(({ key, node }) => {
         const branches = node.branches
@@ -101,7 +101,7 @@ ${common}
 いまはあなた（AI）の質疑の時間です。相手（練習者）の立論に質問します。
 
 【質問の選び方】
-- 下の「準備済みの質疑」を優先して使うこと。【8分セット】の連鎖を上から順に使うのが基本
+- 下の「準備済みの質疑」を優先して使うこと。【使う質疑】（練習者が試合で使うと選んだもの）の連鎖を上から順に使うのが基本
 - 連鎖は、相手の答えがどの分岐（認める／否定する／はぐらかす）に近いかを見て、その分岐の「次は qN」へ進む
 - 連鎖の「引き出したい結論」に届いたら、次の連鎖へ移る
 - 準備済みの質問を使ったときは、そのキー（例: "q3"）を usedKey に入れる。言い回しは自然に直してよい
@@ -125,7 +125,7 @@ ${formatChains(ctx.chains, { withModelAnswer: false })}
 export function simulatorOpeningPrompt(): string {
   return `
 質疑を始めてください。最初の質問を1つだけ出してください。
-準備済みの質疑があれば【8分セット】の最初の連鎖の起点（いちばん上の質問）から始めてください。
+準備済みの質疑があれば【使う質疑】の最初の連鎖（なければいちばん上の連鎖）の起点（いちばん上の質問）から始めてください。
 
 出力は次のJSONのみ:
 { "reply": "最初の質問", "usedKey": "使ったキー または null" }

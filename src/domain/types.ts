@@ -445,7 +445,7 @@ export interface CrossExamNode {
   goal?: string;
   /** 1(低)〜5(高) */
   priority: number;
-  /** 8分セットに含まれる連鎖の並び順。含まれないなら undefined */
+  /** ゼミ生が「使う」と選んだ連鎖の並び順（set_order 列）。選んでいなければ undefined */
   setOrder?: number;
   origin: QuestionOrigin;
   /** 練習で答えに詰まった回数（§4.3） */

@@ -12,13 +12,7 @@ import {
   numberFindings,
 } from "@/db/schema";
 import { assertNoCycle } from "@/domain/invariants";
-import {
-  coverageGaps,
-  estimateChainSeconds,
-  questionKey,
-  selectEightMinuteSet,
-  type ChainSummary,
-} from "@/domain/cross-exam";
+import { coverageGaps, questionKey } from "@/domain/cross-exam";
 import {
   ATTACK_POINTS,
   SIDE_LABELS,
@@ -197,32 +191,6 @@ async function generateForParagraph(
   }
 }
 
-/** 8分セットを選び直す（§4.2）。質疑を足したとき・練習で詰まったときにも呼ぶ */
-export async function recomputeEightMinuteSet(variantId: string) {
-  const variant = await loadVariant(variantId);
-  const nodes = await loadNodes(variantId);
-  const order = new Map(paragraphsOf(variant).map((p) => [p.claimId, p.order]));
-  const chainIds = [...new Set(nodes.map((n) => n.chainId))];
-  const summaries: ChainSummary[] = chainIds.map((chainId) => {
-    const members = nodes.filter((n) => n.chainId === chainId);
-    const root = members.sort((a, b) => a.chainOrder - b.chainOrder)[0];
-    return {
-      chainId,
-      priority: root.priority,
-      stuckCount: Math.max(...members.map((m) => m.stuckCount)),
-      paragraphOrder: order.get(root.targetClaimId ?? "") ?? 99,
-      seconds: estimateChainSeconds(members, chainId),
-    };
-  });
-  const set = selectEightMinuteSet(summaries);
-  for (const chainId of chainIds) {
-    await db
-      .update(crossExamNodes)
-      .set({ setOrder: set.get(chainId) ?? null })
-      .where(eq(crossExamNodes.chainId, chainId));
-  }
-}
-
 export async function stepCrossExam(ctx: StepContext) {
   const meter = new UsageMeter();
   const project = await loadProject(ctx.projectId);
@@ -277,7 +245,6 @@ export async function stepCrossExam(ctx: StepContext) {
     await saveChains(variant, p, out, "generated");
   }
 
-  await recomputeEightMinuteSet(variant.id);
   return meter.total;
 }
 
@@ -310,7 +277,6 @@ export async function stepMoreQuestions(ctx: StepContext) {
       "新しい質問が見つかりませんでした（既にある質問と同じ趣旨のものを除いた結果、0問でした）。別の段落で試してください。",
     );
   }
-  await recomputeEightMinuteSet(variant.id);
   return meter.total;
 }
 
