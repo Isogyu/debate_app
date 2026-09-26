@@ -1,5 +1,5 @@
 /**
- * LLM構造化出力のスキーマ（REQUIREMENTS.md §6.3 エラー設計）
+ * LLM構造化出力のスキーマ（v6）
  *
  * LLMの出力は必ずここを通す。検証に落ちたら自動リトライ1回、
  * それでも駄目ならそのステップだけ failed にして他は続行する。
@@ -8,12 +8,7 @@
 import { z } from "zod";
 
 /**
- * 任意の文字列項目。
- *
- * LLMは「値なし」を項目の省略ではなく `null` で表現することが多い。
- * `.optional()` だけだと null を弾いてしまい、
- * 「分岐の終端（次の質問がない）」のような正常な出力で生成全体が失敗する。
- * 実際に質疑フローの生成がこれで落ちたため、null も受けて undefined に寄せる。
+ * 任意の文字列項目。LLMは「値なし」を null で表現することが多いので undefined に寄せる。
  */
 const optionalText = z
   .string()
@@ -21,16 +16,25 @@ const optionalText = z
   .nullable()
   .transform((v) => v ?? undefined);
 
+const optionalTextArray = z
+  .array(z.string())
+  .optional()
+  .nullable()
+  .transform((v) => v ?? undefined);
+
 const sideSchema = z.enum(["affirmative", "negative"]);
 
-const sectionTypeSchema = z.enum([
-  "criteria",
-  "environment",
-  "comparison",
-  "other", // 実例にない構成も登録できるようにする（§8）
-]);
+const sectionTypeSchema = z
+  .string()
+  .transform((v) =>
+    (["criteria", "environment", "comparison", "other"] as const).includes(
+      v as "criteria",
+    )
+      ? (v as "criteria" | "environment" | "comparison" | "other")
+      : "other",
+  );
 
-const sourceTypeSchema = z.enum([
+export const sourceTypeSchema = z.enum([
   "law",
   "precedent",
   "statistic",
@@ -43,7 +47,13 @@ const sourceTypeSchema = z.enum([
   "self_made",
 ]);
 
-const attackPointSchema = z.enum(["premise", "evidence", "causality", "impact"]);
+const attackPointSchema = z.enum([
+  "premise",
+  "evidence",
+  "causality",
+  "impact",
+  "numbers",
+]);
 
 const evaluationFrameworkSchema = z.object({
   name: z.string().min(1),
@@ -51,32 +61,20 @@ const evaluationFrameworkSchema = z.object({
   criteria: z.array(z.string().min(1)).min(1),
 });
 
-/** 条文全文はLLMに書かせない。名称と条番号だけ返させ、全文は人が入れる（§13-4） */
-const lawRefSchema = z.object({
-  name: z.string().min(1),
-  article: z.string().min(1),
-});
-
 export const analysisOutputSchema = z.object({
   policyChange: z.string().min(1),
   statusQuo: z.string().min(1),
-  relatedLaws: z.array(lawRefSchema),
+  relatedLaws: z.array(z.object({ name: z.string().min(1), article: z.string() })),
   stakeholders: z.array(z.string()),
   coreIssues: z.array(z.string()),
   categories: z
-    .array(
-      z.object({
-        name: z.string().min(1),
-        description: z.string(),
-      }),
-    )
+    .array(z.object({ name: z.string().min(1), description: z.string() }))
     .min(1),
   frameworks: z.object({
     affirmative: evaluationFrameworkSchema,
     negative: evaluationFrameworkSchema,
   }),
 });
-export type AnalysisOutput = z.infer<typeof analysisOutputSchema>;
 
 export const caseOutlineOutputSchema = z.object({
   side: sideSchema,
@@ -95,12 +93,7 @@ export const caseOutlineOutputSchema = z.object({
     .min(1),
   conclusion: z.string().min(1),
 });
-export type CaseOutlineOutput = z.infer<typeof caseOutlineOutputSchema>;
 
-/**
- * 本文。資料参照は `refSlots` に宣言させ、本文中では `【資料{slot}参照】` を使わせる。
- * 実際の番号への変換は保存時に renumberSourceRefs が行う。
- */
 export const caseBodyOutputSchema = z.object({
   sections: z.array(
     z.object({
@@ -114,11 +107,11 @@ export const caseBodyOutputSchema = z.object({
           causalChain: z.array(z.string()),
           impact: z.string(),
           categoryNames: z.array(z.string()),
-          /** この段落が必要とする資料。後段で資料要件へ展開する */
           refSlots: z.array(
             z.object({
-              slot: z.string().min(1), // 本文中の【資料{slot}参照】と対応
+              slot: z.string().min(1),
               provesWhat: z.string().min(1),
+              kind: optionalText,
             }),
           ),
         }),
@@ -126,101 +119,200 @@ export const caseBodyOutputSchema = z.object({
     }),
   ),
 });
-export type CaseBodyOutput = z.infer<typeof caseBodyOutputSchema>;
 
-export const sourceRequirementOutputSchema = z.object({
-  requirements: z.array(
+export const lengthAdjustSchema = z.object({
+  paragraphs: z.array(
     z.object({
-      slot: z.string().min(1),
-      provesWhat: z.string().min(1),
-      sourceType: sourceTypeSchema,
-      description: z.string(),
-      searchKeywords: z.array(z.string()),
-      /** ホワイトリストのIDのみ。範囲外は sanitize で落とす */
-      suggestedSourceIds: z.array(z.string()),
-      formatHint: z.enum(["quote", "chart", "table", "law_text", "self_made"]),
-      categoryNames: z.array(z.string()),
+      id: z.string().min(1),
+      claim: z.string().min(1),
+      warrant: z.string(),
+      impact: z.string(),
     }),
   ),
 });
-export type SourceRequirementOutput = z.infer<
-  typeof sourceRequirementOutputSchema
->;
 
-export const crossExamOutputSchema = z.object({
-  nodes: z.array(
-    z.object({
-      key: z.string().min(1), // 出力内での一時ID
-      direction: z.enum(["attack", "defense"]),
-      question: z.string().min(1),
-      purpose: z.string(),
-      categoryNames: z.array(z.string()),
-      targetClaimTitle: optionalText,
-      branches: z.array(
-        z.object({
-          expectedAnswer: z.string().min(1),
-          followUpKey: optionalText,
-          exposedWeakness: optionalText,
-        }),
-      ),
-    }),
-  ),
+export const paragraphTextSchema = z.object({
+  claim: z.string().min(1),
+  warrant: z.string(),
+  impact: z.string(),
 });
-export type CrossExamOutput = z.infer<typeof crossExamOutputSchema>;
 
-export const rebuttalOutputSchema = z.object({
-  rebuttals: z.array(
-    z.object({
-      targetClaimTitle: z.string().min(1),
-      attackPoint: attackPointSchema,
-      argument: z.string().min(1),
-      categoryNames: z.array(z.string()),
-    }),
-  ),
-});
-export type RebuttalOutput = z.infer<typeof rebuttalOutputSchema>;
-
-/** 複数の相手想定パターン由来の反駁を、主張の類型で集約させる（§8-7） */
-export const blocksOutputSchema = z.object({
-  blocks: z.array(
-    z.object({
-      opponentArgument: z.string().min(1),
-      summary: z.string().min(1), // 本番の一覧カードに出る「返しの要点」
-      categoryNames: z.array(z.string()),
-      rebuttalArguments: z.array(z.string()),
-    }),
-  ),
-});
-export type BlocksOutput = z.infer<typeof blocksOutputSchema>;
-
-export const comparisonOutputSchema = z.object({
-  criteria: z.array(
-    z.object({
-      name: z.string().min(1),
-      categoryName: z.string().min(1), // 争点カテゴリに紐づける（§14）
-      affirmative: z.string(),
-      negative: z.string(),
-    }),
-  ),
-  verdictLogic: z.string(),
-});
-export type ComparisonOutput = z.infer<typeof comparisonOutputSchema>;
-
-/**
- * サブセクション1つ分の再生成（DESIGN §5「この部分を再生成」）。
- * 資料参照は既存の番号をそのまま使わせるため、slot宣言は求めない。
- */
 export const claimRegenerationSchema = z.object({
   claim: z.string().min(1),
   warrant: z.string(),
   causalChain: z.array(z.string()),
   impact: z.string(),
 });
-export type ClaimRegeneration = z.infer<typeof claimRegenerationSchema>;
 
-// ── 質疑シミュレーター（U9） ──────────────────────────
+export const importStructureSchema = z.object({
+  claim: z.tuple([z.number().int(), z.number().int()]),
+  sections: z
+    .array(
+      z.object({
+        titleLine: z.number().int(),
+        type: sectionTypeSchema,
+        subsections: z
+          .array(
+            z.object({
+              titleLine: z.number().int(),
+              body: z.tuple([z.number().int(), z.number().int()]),
+            }),
+          )
+          .min(1),
+      }),
+    )
+    .min(1),
+  conclusion: z.tuple([z.number().int(), z.number().int()]),
+});
+
+// ── 資料 ─────────────────────────────────────────────
+export const sourcePlanSchema = z.object({
+  requirements: z.array(
+    z.object({
+      slot: z.string().min(1),
+      provesWhat: z.string().min(1),
+      sourceType: sourceTypeSchema.catch("govt_doc"),
+      description: z.string(),
+      searchKeywords: z.array(z.string()),
+      suggestedSourceIds: z.array(z.string()),
+      formatHint: z
+        .enum(["quote", "chart", "table", "law_text", "self_made"])
+        .catch("quote"),
+      categoryNames: z.array(z.string()),
+      lawName: optionalText,
+      article: optionalText,
+      statKeywords: optionalTextArray,
+      statisticSteps: optionalTextArray,
+      webQuery: optionalText,
+      whatToExtract: z.string().default(""),
+    }),
+  ),
+});
+
+export const pickQuoteSchema = z.object({
+  found: z.boolean(),
+  quote: optionalText,
+  why: optionalText,
+});
+
+export const pickSpeechSchema = z.object({
+  found: z.boolean(),
+  index: z.number().int().optional().nullable(),
+  quote: optionalText,
+  why: optionalText,
+});
+
+export const pickStatTableSchema = z.object({
+  found: z.boolean(),
+  tableId: optionalText,
+  why: optionalText,
+});
+
+export const buildStatisticSchema = z.object({
+  found: z.boolean(),
+  inputs: z
+    .array(z.object({ key: z.string().min(1), row: z.string().min(1), label: z.string().min(1) }))
+    .default([]),
+  formulas: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        label: z.string().min(1),
+        operation: z.enum(["ratio", "percent", "growth", "difference", "per_capita", "share"]),
+        a: z.string().min(1),
+        b: z.string().min(1),
+        unit: z.string().default(""),
+      }),
+    )
+    .default([]),
+  chart: z
+    .object({
+      type: z.enum(["bar", "line"]).catch("bar"),
+      title: z.string().default(""),
+      points: z.array(z.string()),
+    })
+    .optional()
+    .nullable(),
+  tableRows: z.array(z.string()).default([]),
+  summary: z.string().default(""),
+});
+
+export const numberUsageSchema = z.object({
+  findings: z.array(
+    z.object({
+      index: z.number().int(),
+      severity: z.enum(["high", "medium", "low"]).catch("medium"),
+      message: z.string().min(1),
+    }),
+  ),
+});
+
+// ── 質疑 ─────────────────────────────────────────────
+export const crossExamChainsSchema = z.object({
+  chains: z.array(
+    z.object({
+      attackPoint: attackPointSchema.catch("premise"),
+      goal: z.string().default(""),
+      priority: z.coerce.number().int().min(1).max(5).catch(3),
+      categoryNames: z.array(z.string()).default([]),
+      nodes: z
+        .array(
+          z.object({
+            key: z.string().min(1),
+            question: z.string().min(1),
+            purpose: z.string().default(""),
+            modelAnswer: z.string().default(""),
+            branches: z
+              .array(
+                z.object({
+                  kind: z.enum(["admit", "deny", "evade"]).catch("admit"),
+                  expectedAnswer: z.string().min(1),
+                  followUpKey: optionalText,
+                  exposedWeakness: optionalText,
+                }),
+              )
+              .default([]),
+          }),
+        )
+        .min(1),
+    }),
+  ),
+});
+
+const closingPerspectiveSchema = z.object({
+  frame: z.string().min(1),
+  blanks: z.array(
+    z.object({ key: z.string().min(1), label: z.string().min(1), hint: z.string().default("") }),
+  ),
+  examples: z.array(
+    z.object({
+      pathLabel: z.string().min(1),
+      chainId: optionalText,
+      text: z.string().min(1),
+    }),
+  ),
+});
+
+export const closingSchema = z.object({
+  own: closingPerspectiveSchema,
+  opponent: closingPerspectiveSchema,
+});
+
+export const strategySchema = z.object({
+  summary: z.string().min(1),
+  strengths: z.array(z.string()),
+  weaknesses: z.array(z.object({ point: z.string().min(1), why: z.string() })),
+  defend: z.array(z.string()),
+  neverConcede: z.array(z.string()),
+  winningPath: z.string(),
+  howToAttack: z.array(z.string()),
+});
+
+// ── 質疑シミュレーター ─────────────────────────────────
 export const simulatorReplySchema = z.object({
   reply: z.string().min(1),
+  /** 生成済みの質疑を使った場合、そのノードのキー */
+  usedKey: optionalText,
 });
 
 export const simulatorFeedbackSchema = z.object({
@@ -228,15 +320,25 @@ export const simulatorFeedbackSchema = z.object({
   weaknesses: z.array(z.string()),
   suggestions: z.array(z.string()),
   summary: z.string(),
+  chains: z
+    .array(
+      z.object({
+        key: z.string(),
+        reached: z.boolean(),
+        note: z.string().default(""),
+      }),
+    )
+    .default([]),
+  stuckKeys: z.array(z.string()).default([]),
+  newQuestions: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        modelAnswer: z.string().default(""),
+        paragraph: z.string().default(""),
+        attackPoint: attackPointSchema.catch("premise"),
+      }),
+    )
+    .default([]),
+  closingExample: optionalText,
 });
-
-export const STEP_SCHEMAS = {
-  analysis: analysisOutputSchema,
-  case_outline: caseOutlineOutputSchema,
-  case_body: caseBodyOutputSchema,
-  source_req: sourceRequirementOutputSchema,
-  cross_exam: crossExamOutputSchema,
-  rebuttal: rebuttalOutputSchema,
-  blocks: blocksOutputSchema,
-  comparison: comparisonOutputSchema,
-} as const;

@@ -7,7 +7,6 @@
 
 import type {
   CaseVariant,
-  CrossExamNode,
   DebateCase,
   SourceMaterial,
   SourceRequirement,
@@ -166,7 +165,9 @@ export function assertRefNumbersConsistent(variant: CaseVariant): void {
  * 不変条件3: 質疑フローの followUpNodeId が循環してはならない。
  * 循環したままツリーを描画すると無限ループする。
  */
-export function assertNoCycle(nodes: CrossExamNode[]): void {
+export function assertNoCycle(
+  nodes: { id: string; branches: { followUpNodeId?: string }[] }[],
+): void {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const state = new Map<string, "visiting" | "done">();
 
@@ -195,7 +196,9 @@ export function assertNoCycle(nodes: CrossExamNode[]): void {
  * 不変条件4: 引用文を登録するなら出典は必須。加工したなら注記も必須。
  * 法務観点（§6.2.1）でシステム側から強制する。
  */
-export function assertCitationRules(material: SourceMaterial): void {
+export function assertCitationRules(
+  material: Pick<SourceMaterial, "quote" | "citation" | "isModified" | "modificationNote">,
+): void {
   if (material.quote && !material.citation?.trim()) {
     throw new InvariantError(
       "CITATION_REQUIRED",
@@ -206,18 +209,6 @@ export function assertCitationRules(material: SourceMaterial): void {
     throw new InvariantError(
       "MODIFICATION_NOTE_REQUIRED",
       "下線などを加えた場合は「［下線はディベーターによる。］」のような注記が必要です。",
-    );
-  }
-}
-
-/** 不変条件5: 本番論題の立論は教材公開できない */
-export function assertPublishable(project: {
-  isCompetitionTopic: boolean;
-}): void {
-  if (project.isCompetitionTopic) {
-    throw new InvariantError(
-      "COMPETITION_TOPIC_NOT_PUBLISHABLE",
-      "本番の論題として登録されているため、教材として公開できません。",
     );
   }
 }

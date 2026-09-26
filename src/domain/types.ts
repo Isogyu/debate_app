@@ -1,14 +1,20 @@
 /**
- * ドメイン型定義（REQUIREMENTS.md §7 / v4）
+ * ドメイン型定義（docs/REQUIREMENTS_v6_draft.md）
  *
- * v4での重要な変更点:
- *  - 資料の「実体」(SourceMaterial) と「参照」(SourceRequirement) を分離した。
- *    資料番号【資料N参照】は立論バリエーション内でのみ一意。
- *  - 生成ジョブ(GenerationJob)を永続エンティティにした。
- *  - セキュリティ要件に対応する User / Revision / ActivityLog を追加した。
+ * v6 の考え方:
+ *  - テーマ（Theme）は常に1つだけが「現テーマ」。前のテーマは過去テーマとして閲覧のみ
+ *  - 立論（CaseVariant）は賛成側・反対側を区別せず同じ扱い。出どころは「登録」か「生成」
+ *  - 立論ごとに、資料・数字の検査・質疑・最終弁論の雛形・特徴と戦い方を持つ
+ *  - 資料の「実体」(SourceMaterial) と「参照」(SourceRequirement) は v4 以来の分離を継続。
+ *    資料番号【資料N参照】は立論ごとに 1..N
  */
 
 export type Side = "affirmative" | "negative";
+
+export const SIDE_LABELS: Record<Side, string> = {
+  affirmative: "賛成側",
+  negative: "反対側",
+};
 
 export type SourceType =
   | "law"
@@ -22,57 +28,110 @@ export type SourceType =
   | "org_doc"
   | "self_made"; // ディベーター作成資料（税額シミュレーション表等）
 
-export type AttackPoint = "premise" | "evidence" | "causality" | "impact";
+export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
+  law: "法令",
+  precedent: "判例",
+  statistic: "統計",
+  paper: "論文",
+  govt_doc: "官公庁資料",
+  diet_record: "国会会議録",
+  news: "新聞・報道",
+  book: "書籍",
+  org_doc: "団体資料",
+  self_made: "自作資料",
+};
+
+/** 質疑で突く観点。v6 で「数字の使い方」を追加（§1-9） */
+export type AttackPoint =
+  | "premise"
+  | "evidence"
+  | "causality"
+  | "impact"
+  | "numbers";
+
+export const ATTACK_POINTS: AttackPoint[] = [
+  "premise",
+  "evidence",
+  "causality",
+  "impact",
+  "numbers",
+];
+
+export const ATTACK_POINT_LABELS: Record<AttackPoint, string> = {
+  premise: "前提",
+  evidence: "根拠（資料）",
+  causality: "因果",
+  impact: "効果",
+  numbers: "数字の使い方",
+};
 
 /** criteria=基準別論証 / environment=環境変化型 / comparison=比較衡量型 / other=実例にない構成 */
 export type SectionType = "criteria" | "environment" | "comparison" | "other";
 
-/** 生成パイプラインの8ステップ（REQUIREMENTS §8） */
+// ── 生成ジョブのステップ ─────────────────────────────────
 export type GenStep =
   | "analysis"
   | "case_outline"
   | "case_body"
-  | "source_req"
+  | "source_plan"
+  | "source_fetch"
+  | "number_check"
   | "cross_exam"
-  | "rebuttal"
-  | "blocks"
-  | "comparison";
+  | "closing"
+  | "strategy"
+  | "import"
+  | "more_questions";
 
-export const GEN_STEPS: GenStep[] = [
-  "analysis",
+/** テーマを登録したときに1回だけ流す */
+export const ANALYSIS_STEPS: GenStep[] = ["analysis"];
+
+/** 立論を1本生成するジョブ（§3.3） */
+export const GENERATE_STEPS: GenStep[] = [
   "case_outline",
   "case_body",
-  "source_req",
+  "source_plan",
+  "source_fetch",
+  "number_check",
   "cross_exam",
-  "rebuttal",
-  "blocks",
-  "comparison",
+  "closing",
+  "strategy",
 ];
 
-/** 画面に出す日本語名。非情報系ユーザー向けに内部名を見せない */
+/** 自作の立論＋資料を登録するジョブ（§3.2） */
+export const IMPORT_STEPS: GenStep[] = [
+  "import",
+  "number_check",
+  "cross_exam",
+  "closing",
+  "strategy",
+];
+
+/** 「この箇所をもっと」（§4.1） */
+export const MORE_QUESTION_STEPS: GenStep[] = ["more_questions"];
+
+/** 画面に出す日本語名。内部名は見せない */
 export const GEN_STEP_LABELS: Record<GenStep, string> = {
   analysis: "論題の分析",
   case_outline: "立論の骨子",
-  case_body: "立論の本文",
-  source_req: "資料要件リスト",
-  cross_exam: "質疑フローチャート",
-  rebuttal: "反駁シート",
-  blocks: "ブロック集",
-  comparison: "比較衡量",
+  case_body: "立論の本文（字数の調整を含む）",
+  source_plan: "資料の計画",
+  source_fetch: "資料の取得・作成",
+  number_check: "数字の検査",
+  cross_exam: "質疑と回答",
+  closing: "最終弁論の雛形",
+  strategy: "特徴と戦い方",
+  import: "ファイルの取り込み",
+  more_questions: "質疑の追加",
 };
 
-export type ProjectStatus = "analyzing" | "generating" | "ready" | "archived";
+export type JobKind = "analysis" | "generate" | "import" | "more_questions";
 
-export type MaterialStatus = "needed" | "found" | "verified";
+export type ThemeStatus = "active" | "archived";
 
-export type VariantRole =
-  | "candidate"
-  | "adopted"
-  | "opponent_prediction"
-  | "practice";
+/** 生成は1テーマにつき各側この本数まで（§2 F3）。登録は数えない */
+export const MAX_GENERATED_PER_SIDE = 3;
 
 // ── 利用者 ───────────────────────────────────────────────
-// 個人識別は「名前を選ぶだけ」。アクセス制御はプロジェクトのパスコードで行う（§6.2）
 export interface User {
   id: string;
   displayName: string;
@@ -85,16 +144,15 @@ export interface LawRef {
   id: string;
   name: string; // "所得税法"
   article: string; // "第56条"
-  fullText?: string; // 条文全文（参考資料Ⅰ用）
-  /** 条文はLLMに生成させない。e-Gov等で人が確認したか（§13-4） */
+  /** 条文はLLMに生成させない */
   verified: boolean;
   sourceUrl?: string;
 }
 
 export interface EvaluationFramework {
-  name: string; // "租税公平主義" / "税の基本原則(税制改革法3条)"
+  name: string;
   basisLaw?: string;
-  criteria: string[]; // ["担税力","公平","中立性"]
+  criteria: string[];
 }
 
 export interface ResolutionAnalysis {
@@ -103,13 +161,12 @@ export interface ResolutionAnalysis {
   relatedLaws: LawRef[];
   stakeholders: string[];
   coreIssues: string[];
-  /** 両側で異なる枠組みを持ちうる（§2.2） */
   frameworks: Record<Side, EvaluationFramework>;
 }
 
 export interface IssueCategory {
   id: string;
-  name: string; // "担税力" "所得分散防止"
+  name: string;
   description: string;
 }
 
@@ -117,10 +174,9 @@ export interface IssueCategory {
 export interface Claim {
   id: string;
   categoryIds: string[];
-  title: string; // "担税力に即した課税"
+  title: string;
   claim: string;
   warrant: string;
-  /** 同じ CaseVariant の sourceRefs 内の参照のみを指す（不変条件2） */
   sourceRefIds: string[];
   causalChain: string[];
   impact: string;
@@ -130,140 +186,313 @@ export interface CaseSection {
   id: string;
   title: string;
   type: SectionType;
-  subsections: Claim[]; // （1）（2）（3）
+  subsections: Claim[];
 }
 
 export interface DebateCase {
   side: Side;
   valuePremise: string;
-  claim: string; // Ⅰ.主張（一文）
+  claim: string; // Ⅰ.主張
   sections: CaseSection[]; // Ⅱ.理由
   conclusion: string; // Ⅲ.結論
   fullText: string;
 }
 
-// ── 資料: 実体と参照の分離 ─────────────────────────────────
-/** 実体。実際に見つけた／作った資料そのもの。プロジェクト内で複数パターンから再利用する */
-export interface SourceMaterial {
-  id: string;
-  provesWhat: string; // = 資料タイトル（証明する命題そのもの）
-  sourceType: SourceType;
-  status: MaterialStatus;
-  citation?: string; // 出典（§2.3の書式）
-  quote?: string; // 引用文
-  isModified: boolean; // 下線・傍点等の加工の有無
-  modificationNote?: string; // "［下線はディベーターによる。］"
-  verifiedBy?: string;
-  verifiedAt?: string;
+export type CaseOrigin = "uploaded" | "generated";
+
+export const CASE_ORIGIN_LABELS: Record<CaseOrigin, string> = {
+  uploaded: "登録",
+  generated: "生成",
+};
+
+// ── 資料 ─────────────────────────────────────────────────
+/**
+ * procedure  = 取得できず、作成手順だけがある
+ * unverified = AIが取得した／登録された。人がまだ確認していない
+ * verified   = 人が確認した
+ */
+export type MaterialStatus = "procedure" | "unverified" | "verified";
+
+export const MATERIAL_STATUS_LABELS: Record<MaterialStatus, string> = {
+  procedure: "作成手順",
+  unverified: "AI取得（未確認）",
+  verified: "確認済",
+};
+
+export type MaterialOrigin = "ai_fetched" | "uploaded" | "copied";
+
+/** 取得できなかった資料の作成手順（§3.4） */
+export interface SourceProcedure {
+  /** 何を証明する資料か */
+  provesWhat: string;
+  /** そのまま検索欄に入れられる語 */
+  searchKeywords: string[];
+  /** 探す場所。URLはホワイトリストから組み立てたものだけ */
+  whereToLook: { label: string; url: string }[];
+  /** 見つけたら何を抜き出すか */
+  whatToExtract: string;
+  /** 統計の場合: 必要な統計表と計算手順 */
+  statisticSteps?: string[];
+  /** 自動で完成できなかった理由（画面に出す） */
+  reason?: string;
 }
 
-/** 参照。ある立論パターンの中で、その資料が何番として何を支えるか */
+/** 統計資料（§3.3 / §6.2）。値はすべてコードが入れる */
+export interface StatisticInput {
+  key: string;
+  label: string;
+  value: number;
+  unit: string;
+  /** 調査年・年次 */
+  year: string;
+  statName: string;
+  tableId: string;
+  tableTitle: string;
+  url: string;
+  /** 表のどのセルか（分類コードの組） */
+  locator: string;
+}
+
+export type StatisticOperation =
+  | "ratio" // a / b
+  | "percent" // a / b × 100
+  | "growth" // (a - b) / b × 100
+  | "difference" // a - b
+  | "per_capita" // a / b
+  | "share"; // a / b × 100（構成比）
+
+export interface StatisticFormula {
+  key: string;
+  label: string;
+  operation: StatisticOperation;
+  a: string; // StatisticInput.key or 他の formula の key
+  b: string;
+  unit: string;
+}
+
+export interface StatisticResult {
+  key: string;
+  label: string;
+  value: number;
+  unit: string;
+  /** 元の数値 → 式 → 結果 を人が読める形で */
+  expression: string;
+}
+
+export type ComparabilityAspect =
+  | "年次"
+  | "定義"
+  | "単位"
+  | "対象範囲"
+  | "名目/実質";
+
+export interface ComparabilityCheck {
+  aspect: ComparabilityAspect;
+  ok: boolean | null; // null = 機械的に判定できない
+  note: string;
+}
+
+export interface StatisticData {
+  inputs: StatisticInput[];
+  formulas: StatisticFormula[];
+  results: StatisticResult[];
+  table: { columns: string[]; rows: string[][] };
+  chart?: {
+    type: "bar" | "line";
+    title: string;
+    unit: string;
+    points: { label: string; value: number }[];
+  };
+  comparability: ComparabilityCheck[];
+}
+
+/** 実体。立論ごとの参照から番号付きで指される */
+export interface SourceMaterial {
+  id: string;
+  projectId: string;
+  provesWhat: string; // = 資料タイトル
+  sourceType: SourceType;
+  status: MaterialStatus;
+  origin: MaterialOrigin;
+  citation?: string;
+  quote?: string;
+  url?: string;
+  /** 出典の最終確認日（YYYY-MM-DD） */
+  lastCheckedAt?: string;
+  sourceDomain?: string;
+  /** §1-3a の情報源の範囲内か。登録資料で範囲外なら注意表示（§3.2） */
+  withinAllowedSources: boolean;
+  procedure?: SourceProcedure;
+  statistic?: StatisticData;
+  copiedFromMaterialId?: string;
+  isModified: boolean;
+  modificationNote?: string;
+}
+
+/** 参照。ある立論の中で、その資料が何番として何を支えるか */
 export interface SourceRequirement {
   id: string;
-  /** 【資料N参照】のN。CaseVariant内で1..Nの連番（不変条件1） */
   number: number;
   materialId: string;
   supportsClaimIds: string[];
   categoryIds: string[];
   description: string;
   searchKeywords: string[];
-  /** §2.4のホワイトリストのIDのみ。LLMの自由記述は許さない */
   suggestedSourceIds: string[];
   formatHint: "quote" | "chart" | "table" | "law_text" | "self_made";
+  /** 資料の計画（source_plan）。取得の手がかりと、取れなかったときの手順の材料 */
+  plan?: SourcePlan;
+}
+
+export interface SourcePlan {
+  /** 法令: 法令名と条 */
+  lawName?: string;
+  article?: string;
+  /** 統計: e-Stat で探す語 */
+  statKeywords?: string[];
+  /** 統計: 何をどう計算して何を示すか（作成手順にも使う） */
+  statisticSteps?: string[];
+  /** 官公庁・判例・論文: 検索に使う語 */
+  webQuery?: string;
+  /** 見つけたら何を抜き出すか */
+  whatToExtract: string;
 }
 
 export interface CaseVariant {
   id: string;
+  projectId: string;
   side: Side;
+  origin: CaseOrigin;
+  label: string;
   framework: string;
-  approach: string; // "環境変化型・DX重視"
+  approach: string;
   debateCase: DebateCase;
-  /** 資料番号はここでスコープされる */
   sourceRefs: SourceRequirement[];
-  qualityScore?: number;
-  role: VariantRole;
+  /** 字数の自動調整で収まらなかったとき（§3.3） */
+  lengthWarning?: string;
+  /** 本文（生成のみ）を人が確認したか */
+  verified: boolean;
+  /** 質疑・フローチャートを人が確認したか */
+  questionsVerified: boolean;
 }
 
-// ── 質疑 ─────────────────────────────────────────────────
+// ── 数字の検査（§1-9） ─────────────────────────────────
+export type NumberAspect = "source" | "calculation" | "comparability" | "usage";
+
+export const NUMBER_ASPECT_LABELS: Record<NumberAspect, string> = {
+  source: "出典の明記",
+  calculation: "計算の再現",
+  comparability: "比較の前提",
+  usage: "使い方の妥当性",
+};
+
+export interface NumberFinding {
+  id: string;
+  variantId: string;
+  aspect: NumberAspect;
+  severity: "high" | "medium" | "low";
+  /** どの段落か（"（1）担税力" のような表示名） */
+  location: string;
+  claimId?: string;
+  /** 問題の数字（原文の表記のまま） */
+  value: string;
+  message: string;
+  /** 自動で直した場合、その内容 */
+  resolution?: string;
+}
+
+// ── 質疑（§4） ───────────────────────────────────────────
+export type BranchKind = "admit" | "deny" | "evade";
+
+export const BRANCH_KIND_LABELS: Record<BranchKind, string> = {
+  admit: "認める",
+  deny: "否定する",
+  evade: "はぐらかす",
+};
+
 export interface CrossExamBranch {
+  kind: BranchKind;
   expectedAnswer: string;
   followUpNodeId?: string;
   exposedWeakness?: string;
 }
 
+export type QuestionOrigin = "generated" | "practice";
+
 export interface CrossExamNode {
   id: string;
-  /** attack=相手立論を攻める / defense=自側への想定質問と回答準備 */
-  direction: "attack" | "defense";
-  targetVariantId?: string;
-  categoryIds: string[];
+  projectId: string;
+  targetVariantId: string;
+  /** 連鎖（質問を重ねて詰める一続き）の単位。単発の質問も長さ1の連鎖として持つ */
+  chainId: string;
+  /** 連鎖の中での位置。0 = 起点 */
+  chainOrder: number;
   targetClaimId?: string;
+  /** 画面表示用の段落名（"（1）担税力"） */
+  targetParagraph: string;
+  attackPoint: AttackPoint;
   question: string;
   purpose: string;
-  branches: CrossExamBranch[]; // 保存時に循環参照を検証する（不変条件3）
-}
-
-// ── 反駁・ブロック ────────────────────────────────────────
-export interface Rebuttal {
-  id: string;
-  /** どの相手想定パターンへの反駁か。複数パターンがあるため必須 */
-  targetVariantId: string;
-  targetClaimId: string;
+  /** 立論側の模範回答 */
+  modelAnswer: string;
+  /** この連鎖で引き出したい結論（起点ノードにだけ入る） */
+  goal?: string;
+  /** 1(低)〜5(高) */
+  priority: number;
+  /** 8分セットに含まれる連鎖の並び順。含まれないなら undefined */
+  setOrder?: number;
+  origin: QuestionOrigin;
+  /** 練習で答えに詰まった回数（§4.3） */
+  stuckCount: number;
   categoryIds: string[];
-  attackPoint: AttackPoint;
-  argument: string;
-  sourceRefIds: string[];
+  branches: CrossExamBranch[];
 }
 
-/** 本番で引く単位。複数パターン由来の反駁を1ブロックに集約する（§8-7） */
-export interface BlockEntry {
-  id: string;
-  categoryIds: string[];
-  opponentArgument: string; // 類型化した代表形
-  summary: string; // 本番モードの一覧カードに出す「返しの要点」
-  myRebuttalIds: string[];
-  myCrossExamIds: string[];
-  myMaterialIds: string[];
-  /** 事前計算した検索用テキスト（本番モードの即応答用） */
-  searchText: string;
+// ── 最終弁論の雛形（§6） ─────────────────────────────────
+export interface ClosingBlank {
+  key: string; // "①"
+  label: string; // "相手が質疑で認めたこと"
+  hint: string;
 }
 
-export interface Comparison {
-  criteria: {
-    categoryId: string; // 争点カテゴリと紐づける（§14 カテゴリ軸ルール）
-    name: string;
-    affirmative: string;
-    negative: string;
-  }[];
-  verdictLogic: string;
+export interface ClosingExample {
+  /** どの経路の場合の例か（"相手が(1)の前提を認めた場合"） */
+  pathLabel: string;
+  chainId?: string;
+  text: string;
 }
 
-// ── プロジェクト ──────────────────────────────────────────
-export interface DebateProject {
-  id: string;
-  title: string;
-  resolution: string;
-  mySide: Side;
-  teamName?: string;
-  members?: string[];
-  ownerTeamId: string;
-  /** パスコードは平文保存しない */
-  passcodeHash: string;
-  /** true=本番論題。事例DBでの教材公開を禁止（不変条件5） */
-  isCompetitionTopic: boolean;
-  status: ProjectStatus;
-  analysis: ResolutionAnalysis;
-  categories: IssueCategory[];
-  caseVariants: CaseVariant[];
-  adoptedCaseId?: string;
-  opponentCaseIds: string[];
-  sourceMaterials: SourceMaterial[];
-  crossExam: CrossExamNode[];
-  rebuttals: Rebuttal[];
-  blocks: BlockEntry[];
-  comparison: Comparison;
-  createdAt: string;
-  updatedAt: string;
+export interface ClosingPerspective {
+  /** 【①…】のような空欄を含む枠。約320字 */
+  frame: string;
+  blanks: ClosingBlank[];
+  examples: ClosingExample[];
+}
+
+export interface ClosingTemplate {
+  variantId: string;
+  /** この立論で戦うチーム用 */
+  own: ClosingPerspective;
+  /** この立論と戦うチーム（相手側）用 */
+  opponent: ClosingPerspective;
+  verified: boolean;
+}
+
+// ── 特徴と戦い方（§7） ───────────────────────────────────
+export interface CaseStrategy {
+  variantId: string;
+  summary: string;
+  strengths: string[];
+  weaknesses: { point: string; why: string }[];
+  /** 質疑で守るところ */
+  defend: string[];
+  /** 譲ってはいけないこと */
+  neverConcede: string[];
+  /** 最終弁論での勝ち筋 */
+  winningPath: string;
+  /** 相手としてこの立論と戦うとき */
+  howToAttack: string[];
+  verified: boolean;
 }
 
 // ── 生成ジョブ ───────────────────────────────────────────
@@ -271,32 +500,26 @@ export interface GenerationStepState {
   step: GenStep;
   status: "pending" | "running" | "done" | "failed";
   attempts: number;
-  /** ユーザー向け日本語メッセージ。スタックトレースは入れない */
   error?: string;
   inputTokens?: number;
   outputTokens?: number;
   model?: string;
 }
 
-export interface GenerationJob {
-  id: string;
-  projectId: string;
-  variantId?: string;
-  steps: GenerationStepState[];
-  /** awaiting_review = 論題分析だけ済み、人の確認待ち */
-  status:
-    | "queued"
-    | "running"
-    | "awaiting_review"
-    | "partial"
-    | "done"
-    | "failed";
-  startedAt?: string;
-  finishedAt?: string;
-  createdBy: string;
+export interface JobParams {
+  /** more_questions: 対象の段落 */
+  claimId?: string;
+  /** import: 取り込むアップロード */
+  uploadId?: string;
 }
 
-// ── 質疑シミュレーター（U9） ──────────────────────────
+// ── 登録（アップロード） ─────────────────────────────────
+export interface ImportIssue {
+  severity: "error" | "warning";
+  message: string;
+}
+
+// ── 質疑シミュレーター ─────────────────────────────────
 /** attack=自分が質問する練習 / defense=自分が質問される練習 */
 export type PracticeMode = "attack" | "defense";
 
@@ -304,57 +527,25 @@ export interface PracticeTurn {
   speaker: "user" | "ai";
   text: string;
   at: string;
+  /** AIが生成済みの質疑を使って質問した場合、そのノード */
+  nodeId?: string;
 }
 
 export interface PracticeFeedback {
-  /** よかった点。練習は続けてもらうことが第一なので必ず出す */
   strengths: string[];
-  /** 次に直すとよい点 */
   weaknesses: string[];
-  /** 具体的な言い換えの例。抽象的な助言だけだと動けない */
   suggestions: string[];
   summary: string;
+  /** フローチャートとの照合（§4.4） */
+  chains: { chainId: string; goal: string; reached: boolean; note: string }[];
+  /** 発言の長さ（字数から推定した読み上げ秒数） */
+  longTurns: { excerpt: string; seconds: number }[];
+  /** テキストでは判定しない観点。画面に明記する */
+  notJudged: string[];
 }
 
-export interface PracticeSession {
-  id: string;
-  projectId: string;
-  userId: string;
-  mode: PracticeMode;
-  /** AIが演じる側の立論 */
-  opponentVariantId: string;
-  turns: PracticeTurn[];
-  feedback?: PracticeFeedback;
-  createdAt: string;
-  finishedAt?: string;
-}
-
-// ── 完全性・責任追跡性 ────────────────────────────────────
-export interface Revision {
-  id: string;
-  projectId: string;
-  entityType:
-    | "case"
-    | "claim"
-    | "source"
-    | "rebuttal"
-    | "block"
-    | "analysis";
-  entityId: string;
-  snapshot: unknown;
-  changedBy: string;
-  changedAt: string;
-  /** AI生成か人の編集か（§6.2 信頼性） */
-  origin: "ai" | "human";
-}
-
-/** 追記専用。UPDATE/DELETEしない（不変条件6） */
-export interface ActivityLog {
-  id: string;
-  projectId?: string;
-  userId: string;
-  action: "generate" | "edit" | "export" | "verify" | "login" | "pack_build";
-  target: string;
-  detail?: string;
-  at: string;
+export interface PracticeReflection {
+  stuckNodeIds: string[];
+  addedNodeIds: string[];
+  closingExample?: string;
 }

@@ -1,21 +1,33 @@
 /**
- * 生成プロンプト（REQUIREMENTS.md §2 実フォーマット / §8 生成パイプライン）
+ * 生成プロンプト: 共通部分と立論（v6 要件 §1・§3）
  *
- * 守らせる原則:
- *  - 実資料の引用文・出典は生成しない。資料要件（命題・探し方）だけを出させる
- *  - 条文全文は生成しない。法令名と条番号だけ
+ * 守らせる原則（v6 で改訂）:
+ *  - 引用文・出典・条文・統計値を AI が「想像で」書かない。
+ *    実在を確かめる作業はすべてコードが行い、AI には選択と構成だけをさせる
+ *  - 立論本文に具体的な数値を書かせない。数値は取得した統計からコードで差し込む（§1-9）
  *  - 情報源はホワイトリストのIDから選ばせる
  */
 
 import { whitelistForPrompt } from "@/domain/source-whitelist";
-import { speechBudgetGuide } from "@/domain/speech";
+import {
+  minAcceptableChars,
+  speechBudgetChars,
+  speechBudgetGuide,
+} from "@/domain/speech";
 import { exemplarFor } from "@/domain/exemplars";
 import type { Side } from "@/domain/types";
 
+export function sideLabel(side: Side): string {
+  return side === "affirmative" ? "賛成側（肯定側）" : "反対側（否定側）";
+}
+
 const NEVER_FABRICATE = `
 【厳守】捏造の禁止
-- 実在の書籍・論文・統計・議事録の「引用文」や「出典」を書いてはいけません。存在しない出典を作ることになります。
-- 法令の条文全文を書いてはいけません。法令名と条番号のみ示してください（条文は人が公的サイトから取得します）。
+- 実在の書籍・論文・統計・議事録の「引用文」や「出典」を自分で書いてはいけません。
+  引用と出典は、アプリが公的な情報源から取得した本文から機械的に作ります。
+- 法令の条文を書いてはいけません。法令名と条番号のみ示してください（条文は e-Gov から取得します）。
+- 統計の数値（件数・割合・金額・倍率など）を自分で書いてはいけません。
+  数値は、アプリが e-Stat から取得した値をコードで計算して差し込みます。
 - 情報源は次のIDから選んでください。リストにないIDを作ってはいけません。
 ${whitelistForPrompt()}
 `.trim();
@@ -27,7 +39,7 @@ export const SYSTEM_BASE = `
 ${NEVER_FABRICATE}
 `.trim();
 
-/** 実物の立論フォーマット（§2.1）をモデルに教える */
+/** 実物の立論フォーマットをモデルに教える */
 export const CASE_FORMAT_GUIDE = `
 立論は次の構造に従います。
 
@@ -37,17 +49,15 @@ export const CASE_FORMAT_GUIDE = `
      フレームワークの定義とその法的根拠を示したうえで、
      （1）（2）（3）… と評価基準ごとに「基準の定義 → 制度への適用評価 → 小結論」の順で論じる
   2. 第2ブロック。次のいずれかの型をとる
-     - 環境変化型（肯定側で多い）: 社会変化・制度整備により「今こそ変えるべき」時宜性を論証する
-     - 比較衡量型（否定側で多い）: 現行制度の利点と、変更によって得られる利益を比較衡量する
+     - 環境変化型（賛成側で多い）: 社会変化・制度整備により「今こそ変えるべき」時宜性を論証する
+     - 比較衡量型（反対側で多い）: 現行制度の利点と、変更によって得られる利益を比較衡量する
 Ⅲ. 結論 … 以上より、と主張を繰り返す
   ※実物には「Ⅳ 再主張」と書くチームもあるが、このアプリでは
     **「Ⅲ. 結論」に統一**する。見出しを勝手に変えないこと
 
-分量は1〜2頁程度。スピーチ時間に収まる密度にしてください。
-
 【厳守】見出しの書き方
 見出しに番号を付けないでください（「1.」「Ⅱ-1.」「（1）」などを含めない）。
-番号は表示・出力の側で自動的に付きます。見出しに書くと「1. Ⅱ-1. …」のように二重になります。
+番号は表示・出力の側で自動的に付きます。
   悪い例: "Ⅱ-1. 租税公平主義から見た問題点" / "（1）担税力に即した課税"
   良い例: "租税公平主義から見た問題点" / "担税力に即した課税"
 
@@ -55,15 +65,17 @@ export const CASE_FORMAT_GUIDE = `
 資料が必要な箇所には、**本文（claim）の中に** 【資料{slot}参照】と実際に書き込んだうえで、
 その slot を refSlots に宣言してください。宣言だけして本文に書かないのは誤りです。
   例: claim に「…必要経費を控除している【資料s1参照】。」と書き、
-      refSlots に { "slot": "s1", "provesWhat": "…" } を入れる
+      refSlots に { "slot": "s1", "provesWhat": "…", "kind": "govt_doc" } を入れる
+
+【厳守】数値を書かない
+統計値・割合・件数・金額を本文に書かないでください。
+数値で示したい箇所は「家族従業者の割合は制定当時から大きく減少している【資料s2参照】」のように
+**数値なしの文**で書き、refSlots の kind を "statistic" にしてください。
+数値はアプリが取得した統計から、あとで本文に差し込みます。
 `.trim();
 
 /**
- * お手本の提示（few-shot）。
- *
- * 大事なのは「内容を真似させない」こと。お手本は別の論題のものなので、
- * 論点まで引きずられると的外れな立論になる。
- * 真似させるのは構成・密度・分量の3つだけだと明示する。
+ * お手本の提示（few-shot）。真似させるのは構成・密度・分量だけ。
  */
 function exemplarInstruction(side: Side, resolution: string): string {
   const ex = exemplarFor(side);
@@ -84,7 +96,7 @@ ${ex.text}
 このお手本から**真似てはいけないもの**:
 - 論点と内容。お手本は「${ex.resolution}」という**別の論題**のものです
 - 「${resolution}」に固有の争点を、自分で考えて組み立ててください
-- お手本に出てくる法令・学説・用語を、関係ないのに持ち込まないこと
+- お手本の中の数値。お手本は人が資料から書いたものです。あなたは数値を書きません
 `.trim();
 }
 
@@ -109,45 +121,54 @@ export function analysisPrompt(resolution: string): string {
 }
 
 注意:
-- 肯定側と否定側で「異なる評価基準の枠組み」を採ることがあります。それぞれに最も有利な枠組みを選んでください。
-  （例: 肯定側=租税公平主義「担税力/公平/中立性」、否定側=税の基本原則「公平/中立/簡素」）
-- **criteria は短い語**にしてください（2〜8文字程度の名詞）。立論の見出しと比較衡量表にそのまま使うためです。
-  悪い例: "婚姻の自由と氏の自己決定権が実質的に保障されているか"
-  良い例: "自己決定権" / "実質的平等" / "権利侵害の有無"
-- categories は全成果物の検索軸になります。4〜8件、互いに重複しない粒度で。
+- 賛成側と反対側で「異なる評価基準の枠組み」を採ることがあります。それぞれに最も有利な枠組みを選んでください。
+- **criteria は短い語**にしてください（2〜8文字程度の名詞）。
+- categories は質疑の整理軸になります。4〜8件、互いに重複しない粒度で。
 `.trim();
 }
 
 export interface OutlineContext {
   resolution: string;
-  side: "affirmative" | "negative";
+  side: Side;
   frameworkName: string;
   criteria: string[];
-  /** 第2ブロックの型を指定してバリエーションを作る（A1） */
   secondBlockType: "environment" | "comparison";
-  approachHint?: string;
+  /** 同じ側に既にある立論。これと枠組み・構成を変える（§3.3 追加生成） */
+  existing: { framework: string; approach: string; claim: string; headings: string[] }[];
 }
 
 export function caseOutlinePrompt(ctx: OutlineContext): string {
+  const existingNote =
+    ctx.existing.length === 0
+      ? ""
+      : `
+【厳守】別の切り口にすること
+この側には既に次の立論があります。**評価基準の枠組みか、第2ブロックの型か、柱にする論点**を変え、
+同じ立論の言い換えにならないようにしてください。
+${ctx.existing
+  .map(
+    (e, i) =>
+      `${i + 1}本目: 枠組み「${e.framework}」／切り口「${e.approach}」／見出し: ${e.headings.join("・")}`,
+  )
+  .join("\n")}
+`;
+
   return `
 ${CASE_FORMAT_GUIDE}
 
 論題: ${ctx.resolution}
-立場: ${ctx.side === "affirmative" ? "肯定側（実施すべき）" : "否定側（実施すべきでない）"}
-使用する評価基準の枠組み: ${ctx.frameworkName}
+立場: ${sideLabel(ctx.side)}
+推奨する評価基準の枠組み: ${ctx.frameworkName}
 評価基準: ${ctx.criteria.join("、")}
-第2ブロックの型: ${ctx.secondBlockType === "environment" ? "環境変化型" : "比較衡量型"}
-${ctx.approachHint ? `切り口の指定: ${ctx.approachHint}` : ""}
-
+第2ブロックの型の既定: ${ctx.secondBlockType === "environment" ? "環境変化型" : "比較衡量型"}
+${existingNote}
 ${exemplarInstruction(ctx.side, ctx.resolution)}
 
 この条件で立論の骨子だけを出力してください（本文はまだ書かない）。
 
 【厳守】分量の制約から逆算すること
-立論は読み上げ5分で、超過すると減点されます。全体で1,600字以内です。
+立論は読み上げ5分で、超過しても30秒以上余っても減点されます。全体で${speechBudgetChars()}字以内です。
 そのため**小見出しは全体で4〜6個まで**にしてください。
-7個以上にすると、1つあたり200字を切って論証が成立しません。
-論点は絞り込み、弱いものは捨ててください。
 
 出力するJSON:
 {
@@ -158,23 +179,18 @@ ${exemplarInstruction(ctx.side, ctx.resolution)}
   "claim": "Ⅰ.主張の一文",
   "sections": [
     { "title": "Ⅱ-1の見出し（枠組み名を含める）", "type": "criteria", "subsectionTitles": ["（1）の見出し","（2）の見出し"] },
-    { "title": "Ⅱ-2の見出し", "type": "${ctx.secondBlockType}", "subsectionTitles": ["..."] }
+    { "title": "Ⅱ-2の見出し", "type": "environment|comparison", "subsectionTitles": ["..."] }
   ],
   "conclusion": "Ⅲ.結論の一文"
 }
 `.trim();
 }
 
-/**
- * 争点カテゴリは全成果物の共通軸（§14）。
- * 一覧を渡さないとLLMが勝手な名前を作り、IDに解決できず結びつきが切れる。
- * 実際にブロック集のカテゴリが全件空になったため、必ずこれを添える。
- */
-function categoryInstruction(categories: string[]): string {
+/** 争点カテゴリは質疑の整理軸。一覧を渡さないとLLMが勝手な名前を作る */
+export function categoryInstruction(categories: string[]): string {
   return `
 【厳守】争点カテゴリ
 categoryNames は次の一覧から**そのままの表記で**選んでください。
-一覧にない名前を作ってはいけません（成果物どうしの結びつきが切れます）。
 ${categories.map((c) => `- ${c}`).join("\n")}`.trim();
 }
 
@@ -201,19 +217,15 @@ ${speechBudgetGuide(subsectionCount)}
 ${categoryInstruction(categories)}
 
 各サブセクションについて:
-- claim: その段落の主張（実際にスピーチで読み上げる文章。です・ます調ではなく論述体で）
+- claim: その段落の主張（実際にスピーチで読み上げる文章。論述体で）
 - warrant: なぜそう言えるかの理由づけ
-- causalChain: 因果の連鎖を段階ごとに配列で（飛躍させず、一段ずつ）
+- causalChain: 因果の連鎖を段階ごとに配列で（準備用のメモ。読み上げない）
 - impact: それが論題の判断にどう効くか
-
-※ claim・warrant・impact は**読み上げる原稿そのもの**です。3つ合わせて
-  上の目安の字数に収めてください。causalChain は読み上げず、
-  準備用のメモなので字数に数えません
+※ claim・warrant・impact は**読み上げる原稿そのもの**です。3つ合わせて上の目安の字数に収めてください
 - categoryNames: 関係する争点カテゴリ名
-- refSlots: 本文中で【資料{slot}参照】と書いた箇所を宣言する。
-            slot は "s1" "s2" … の形。provesWhat には「その資料が証明すべき命題」を書く
-            **claim の文字列の中に【資料{slot}参照】を必ず含めること。**
-            宣言だけして本文に書かないと、立論と参考資料の対応が切れます
+- refSlots: 本文中で【資料{slot}参照】と書いた箇所を宣言する。slot は "s1" "s2" … の形。
+            provesWhat には「その資料が証明すべき命題」、kind には資料の種類
+            （law|precedent|statistic|paper|govt_doc|diet_record）を書く
 
 出力するJSON:
 {
@@ -224,7 +236,7 @@ ${categoryInstruction(categories)}
         { "title": "...", "claim": "...", "warrant": "...",
           "causalChain": ["...","..."], "impact": "...",
           "categoryNames": ["..."],
-          "refSlots": [{ "slot": "s1", "provesWhat": "..." }] }
+          "refSlots": [{ "slot": "s1", "provesWhat": "...", "kind": "statistic" }] }
       ]
     }
   ]
@@ -232,192 +244,86 @@ ${categoryInstruction(categories)}
 `.trim();
 }
 
-export function sourceRequirementPrompt(slotsJson: string): string {
+/**
+ * 字数の自動調整（§3.3）。
+ * 早口・遅口で合わせるのは減点対象なので、文章の量そのものを直させる。
+ */
+export function lengthAdjustPrompt(
+  paragraphsJson: string,
+  currentChars: number,
+  direction: "shorten" | "lengthen",
+): string {
+  const min = minAcceptableChars();
+  const max = speechBudgetChars();
+  const target = Math.round((min + max) / 2) + 20;
+  const delta = Math.abs(target - currentChars);
   return `
-立論が必要としている資料について、「どう探せばよいか」を整理してください。
-繰り返しますが、引用文や出典そのものは書かないでください。探し方だけです。
+立論の読み上げ字数が${direction === "shorten" ? "多すぎ" : "少なすぎ"}ます。
+現在 ${currentChars}字。適正は ${min + 1}〜${max}字（4分30秒超〜5分以内）で、目標は約${target}字です。
+**全体で約${delta}字${direction === "shorten" ? "削って" : "足して"}**ください。
 
-必要な資料（本文で宣言された slot）:
-${slotsJson}
-
-出力するJSON（slot は上のリストで渡されたものを**そのままの文字列で**返してください。
-勝手に "s1" のような別の形に変えると、どの資料の情報か分からなくなります）:
-{
-  "requirements": [
-    {
-      "slot": "（上のリストで渡された slot をそのまま）",
-      "provesWhat": "この資料が証明する命題（そのまま資料のタイトルになる）",
-      "sourceType": "law|precedent|statistic|paper|govt_doc|diet_record|news|book|org_doc|self_made",
-      "description": "なぜこの箇所にこの資料が必要かの説明",
-      "searchKeywords": ["検索に使う語"],
-      "suggestedSourceIds": ["ホワイトリストのID"],
-      "formatHint": "quote|chart|table|law_text|self_made",
-      "categoryNames": ["争点カテゴリ名"]
-    }
-  ]
+${
+  direction === "shorten"
+    ? "削り方: 同じことの言い換え・前置き・接続の重複を落とす。論点が多すぎる段落は、弱い理由を1つ捨てる。"
+    : "足し方: 因果を一段ずつ書き足す（AだからB、BだからC）。新しい論点は足さない。"
 }
 
-注意:
-- 自分たちで作る資料（税額シミュレーション表など）が有効な場合は sourceType を self_made にしてください。
-- suggestedSourceIds は必ずホワイトリストのIDから選んでください。
+【厳守】
+- 【資料N参照】の表記は、位置を大きく変えずにそのまま残すこと。新しい資料番号を作らないこと
+- 数値（統計値・割合・件数・金額）を新しく書かないこと
+- 見出しは変えないこと
 
-学術文献の扱い（重要）:
-法解釈・原則の定義・制度趣旨・学説の対立を示す資料には、**必ず cinii を含めて**ください。
-政策ディベートでは、統計や政府文書だけでは「なぜそう解釈すべきか」を支えられません。
-判例研究や法律論文がその役目を果たします。
-- 「〜という原則がある」「〜と解されている」を証明する資料 → cinii（必要に応じて jstage, ndl も）
-- 判例そのものを引く資料 → courts に加えて cinii（判例研究・判例評釈が見つかる）
+現在の段落（id ごとに claim・warrant・impact を返してください）:
+${paragraphsJson}
 
-searchKeywords は、そのまま検索欄に入れて使えるものにしてください。
-CiNiiやe-Statでは、この語で検索した結果の一覧が直接開きます。
-抽象的な語（「公平」だけ等）ではなく、分野が絞れる語の組み合わせにしてください。
-  悪い例: ["公平", "税"]
-  良い例: ["夫婦別氏", "人格権", "最高裁大法廷"]
+出力するJSON:
+{ "paragraphs": [ { "id": "段落のid", "claim": "...", "warrant": "...", "impact": "..." } ] }
 `.trim();
 }
 
-export function crossExamPrompt(
-  opponentCaseText: string,
-  direction: "attack" | "defense",
-  categories: string[],
-): string {
-  const role =
-    direction === "attack"
-      ? "相手の立論の弱点を突く質疑を設計してください。"
-      : "自分の立論に対して相手から来そうな質問と、その回答準備を設計してください。";
-  return `
-${role}
-
-対象の立論:
-${opponentCaseText}
-
-${categoryInstruction(categories)}
-
-質疑は「想定回答ごとに次の質問が変わる」分岐構造で作ります。
-どう答えられても追及が続くように、各回答に対する次の一手を用意してください。
-
-分量の目安（本番の質疑時間は限られています。網羅より鋭さを優先してください）:
-- 起点となる質問は3〜4個
-- 各質問の想定回答は2個まで
-- 追及は2段まで（起点 → 追及 → 追及）
-- 全体で10ノードを超えないこと
-
-出力するJSON:
-{
-  "nodes": [
-    {
-      "key": "q1",
-      "direction": "${direction}",
-      "question": "質問文（本番でそのまま読める短さで）",
-      "purpose": "この質問の意図",
-      "categoryNames": ["争点カテゴリ名"],
-      "targetClaimTitle": "対象のサブセクション見出し",
-      "branches": [
-        { "expectedAnswer": "想定される回答", "followUpKey": "q2", "exposedWeakness": "この回答をした場合に露呈する弱点" }
-      ]
-    }
-  ]
-}
-
-注意: followUpKey は他のノードの key を指します。循環させないでください。
-`.trim();
-}
-
-export function rebuttalPrompt(
-  opponentCaseText: string,
-  categories: string[],
+/**
+ * 数値の差し込み（§1-9「出典の明記」）。
+ * 使ってよい数値の一覧を渡し、それ以外の数値を書かせない。書いたかはコードで検査する。
+ */
+export function insertNumbersPrompt(
+  paragraphJson: string,
+  allowedNumbers: { refNumber: number; label: string; text: string }[],
+  unsourced: string[],
 ): string {
   return `
-相手の立論を「前提・根拠・因果・効果」の4つの攻撃点に分解して、反駁を組み立ててください。
+立論の1段落を、数値の扱いについてだけ直してください。論旨と長さ（±1割）は変えません。
 
-- premise（前提）: 相手が当然視している前提を疑う
-- evidence（根拠）: 資料の射程・古さ・代表性を突く
-- causality（因果）: 「AだからB」の飛躍を突く
-- impact（効果）: 仮に正しくても論題の判断を変えないと示す
+段落:
+${paragraphJson}
 
-相手の立論:
-${opponentCaseText}
-
-${categoryInstruction(categories)}
+${
+  unsourced.length > 0
+    ? `【厳守】次の数値には出典がありません。**本文から取り除いてください**（数値なしの表現にする）:\n${unsourced.map((u) => `- ${u}`).join("\n")}\n`
+    : ""
+}
+${
+  allowedNumbers.length > 0
+    ? `使ってよい数値（取得した統計からコードで計算したもの）。効果的なら、対応する【資料N参照】の近くで使ってください:
+${allowedNumbers.map((a) => `- 【資料${a.refNumber}参照】${a.label}: ${a.text}`).join("\n")}
+`
+    : ""
+}
+【厳守】
+- 上の「使ってよい数値」以外の数値を書かないこと（表記も変えない。${"「約」などを付けるのは可"}）
+- 【資料N参照】の表記はそのまま残すこと
 
 出力するJSON:
-{
-  "rebuttals": [
-    { "targetClaimTitle": "対象のサブセクション見出し",
-      "attackPoint": "premise|evidence|causality|impact",
-      "argument": "反駁の本文（本番で読み上げられる長さ）",
-      "categoryNames": ["争点カテゴリ名"] }
-  ]
-}
-`.trim();
-}
-
-export function blocksPrompt(
-  rebuttalsJson: string,
-  categories: string[],
-): string {
-  return `
-本番の試合中に引くための「ブロック集」を作ります。
-相手が何か言ってきたとき、争点カテゴリから2タップで返しに辿り着ける形にします。
-
-用意した反駁:
-${rebuttalsJson}
-
-${categoryInstruction(categories)}
-※ブロックのカテゴリは、本番中に相手の主張を分類して引くための見出しです。
-　必ず1つ以上付けてください。付いていないと本番モードから辿り着けません。
-
-重要: 複数の想定パターンから似た反駁が出ています。
-**同じ趣旨のものは1つのブロックにまとめてください。**
-本番の一覧にほぼ同じ返しが並ぶと、探す時間が増えて使い物になりません。
-
-出力するJSON:
-{
-  "blocks": [
-    { "opponentArgument": "相手が言いそうな主張（類型化した代表的な言い回し）",
-      "summary": "返しの要点を1〜2文で。本番の一覧カードにこれだけが表示される",
-      "categoryNames": ["争点カテゴリ名"],
-      "rebuttalArguments": ["このブロックに束ねる反駁の本文（元の文言をそのまま）"] }
-  ]
-}
-`.trim();
-}
-
-export function comparisonPrompt(
-  affirmativeText: string,
-  negativeText: string,
-  categories: string[],
-): string {
-  return `
-評価基準ごとに両side の利益・不利益を対比する「比較衡量表」を作ってください。
-
-肯定側の立論:
-${affirmativeText}
-
-否定側の立論:
-${negativeText}
-
-使える争点カテゴリ: ${categories.join("、")}
-
-出力するJSON:
-{
-  "criteria": [
-    { "name": "評価基準名", "categoryName": "対応する争点カテゴリ名（上のリストから）",
-      "affirmative": "肯定側にとっての評価", "negative": "否定側にとっての評価" }
-  ],
-  "verdictLogic": "どちらを重く見るべきかの判断の軸"
-}
+{ "claim": "...", "warrant": "...", "impact": "..." }
 `.trim();
 }
 
 export interface RegenerateClaimContext {
   resolution: string;
-  side: "affirmative" | "negative";
+  side: Side;
   framework: string;
   sectionTitle: string;
   claimTitle: string;
   current: string;
-  /** 本文で使ってよい資料番号。これ以外を書かせない */
   allowedRefNumbers: number[];
 }
 
@@ -430,7 +336,7 @@ export function regenerateClaimPrompt(ctx: RegenerateClaimContext): string {
 立論の一部分だけを書き直してください。ほかの部分には手を触れません。
 
 論題: ${ctx.resolution}
-立場: ${ctx.side === "affirmative" ? "肯定側" : "否定側"}
+立場: ${sideLabel(ctx.side)}
 評価基準の枠組み: ${ctx.framework}
 このブロックの見出し: ${ctx.sectionTitle}
 書き直す段落の見出し: ${ctx.claimTitle}
@@ -439,14 +345,12 @@ export function regenerateClaimPrompt(ctx: RegenerateClaimContext): string {
 ${ctx.current}
 
 【厳守】長さ
-立論は読み上げ5分で、超過すると減点されます。
-書き直したあとの claim・warrant・impact の合計を、**現在の本文と同じかそれ以下**に
-してください。詳しくしようとして長くしないこと。
+書き直したあとの claim・warrant・impact の合計を、**現在の本文と同じかそれ以下**にしてください。
 
-【厳守】資料参照について
+【厳守】資料参照・数値
 この段落で使ってよいマーカーは次のものだけです: ${refs}
-- 新しい資料番号を作ってはいけません。資料要件との対応が壊れます。
-- 上のマーカーは、本文中の適切な位置にそのままの表記で残してください。
+- 新しい資料番号を作ってはいけません。
+- 現在の本文にない数値を書いてはいけません。
 
 出力するJSON:
 {
@@ -458,151 +362,32 @@ ${ctx.current}
 `.trim();
 }
 
-// ── 質疑シミュレーター（U9 / DESIGN §11） ──────────────
-
-export interface SimulatorContext {
-  resolution: string;
-  /** AIが演じる側 */
-  aiSide: "affirmative" | "negative";
-  /** AIが守る（または攻める根拠にする）立論 */
-  caseText: string;
-  mode: "attack" | "defense";
-}
-
-/**
- * AIに一貫した立場を保たせる。
- * 本番の相手は自分の立論から外れた譲歩をしないので、
- * 簡単に折れる相手だと練習にならない。
- */
-export function simulatorSystem(ctx: SimulatorContext): string {
-  const side = ctx.aiSide === "affirmative" ? "肯定側" : "否定側";
-  const role =
-    ctx.mode === "attack"
-      ? `あなたは${side}のディベーターです。相手（練習者）からの質疑に答えます。`
-      : `あなたは${side}のディベーターです。相手（練習者）の立論に対して質疑を行います。`;
-
+/** 登録立論の構造化（§3.2）。本文は書き換えず、区切りの行番号だけを返させる */
+export function importStructurePrompt(numberedText: string): string {
   return `
-${role}
+次は、ディベートの立論原稿を1行ずつ番号付きで並べたものです。
+Ⅰ主張／Ⅱ理由（ブロック見出しと（1）（2）…の段落）／Ⅲ結論 の区切りを、**行番号だけで**答えてください。
+本文を書き写したり要約したりしないでください。
 
-論題: ${ctx.resolution}
+${numberedText}
 
-あなたが立脚する立論:
-${ctx.caseText}
+ルール:
+- 行番号は左端の数字（0始まり）です。範囲は両端を含みます
+- claim: Ⅰ主張の本文の行範囲（見出し行を含めてもよい）
+- sections: Ⅱ理由の中の「1.」「2.」などのブロック。titleLine はブロック見出しの行
+  - subsections: ブロック内の段落。（1）（2）の見出しがあればその行を titleLine に、
+    本文の行範囲を body に。見出しのない段落しかない場合は、ブロック見出しの行を titleLine にし、
+    ブロックの本文全体を1つの段落として body にする
+  - type: criteria（評価基準による論証）/ environment（環境変化型）/ comparison（比較衡量型）/ other
+- conclusion: Ⅲ結論（Ⅳ再主張と書かれていてもこれ）の本文の行範囲
 
-【守ること】
-- 上の立論から外れないこと。自分の立場を簡単に捨てない
-- 1回の発言は2〜3文まで。本番の質疑は短いやり取りの積み重ねです
-- 答えに詰まる場面では、本番で実際に起きるように、話をそらしたり
-  条件を付けて限定したりして粘ること。すぐに負けを認めないこと
-- ただし明らかに破綻した主張は無理に守らず、争点を移すこと
-- 練習相手として振る舞い、解説や助言はしないこと（それは最後のフィードバックで行う）
-${
-  ctx.mode === "defense"
-    ? "- 質問は一度に1つだけ。相手の答えを受けてから次を出すこと"
-    : "- 聞かれたことに答えること。質問に質問で返さないこと（逆質問は減点対象）"
-}
-- 相手の発言をさえぎらないこと。本番でも減点の対象です
-
-出力は次のJSONのみ:
-{ "reply": "あなたの発言" }
-`.trim();
-}
-
-/** defenseモードの最初の一手。練習者に答えさせるところから始める */
-export function simulatorOpeningPrompt(userCaseText: string): string {
-  return `
-相手（練習者）の立論は次のとおりです。
-
-${userCaseText}
-
-この立論の弱点を突く質疑を始めてください。最初の質問を1つだけ出してください。
-いきなり核心を突かず、前提を確認するところから入ると本番に近くなります。
-
-出力は次のJSONのみ:
-{ "reply": "最初の質問" }
-`.trim();
-}
-
-export function simulatorReplyPrompt(
-  history: { speaker: "user" | "ai"; text: string }[],
-  userText: string,
-): string {
-  const transcript = history
-    .map((t) => `${t.speaker === "user" ? "相手" : "あなた"}: ${t.text}`)
-    .join("\n");
-
-  return `
-これまでのやり取り:
-${transcript || "（まだありません）"}
-
-相手の発言: ${userText}
-
-これに応答してください。
-
-出力は次のJSONのみ:
-{ "reply": "あなたの発言" }
-`.trim();
-}
-
-/**
- * 終了後のフィードバック。
- * 練習は続けてもらうことが第一なので、必ずよかった点から入る。
- */
-export function simulatorFeedbackPrompt(
-  mode: "attack" | "defense",
-  transcript: string,
-): string {
-  // 観点は審査要項から取っている。想像で作った基準で講評しても実戦で効かない
-  const common = `審査要項に基づく減点項目（共通）:
-- 相手の質問や回答を頻繁にさえぎった（マナー点の減点）
-- 相手の質問に意図的に答えなかった（マナー点の減点）
-- 相手の質問時間に逆質問をした（減点。ただし相手の質問の立場や趣旨を
-  確かめるための確認の質問は減点にならない。相手が既に立論で明らかに
-  している事項を執拗に確認するのは減点）
-- 20秒程度以上の長い沈黙（活発度の減点）`;
-
-  const focus =
-    mode === "attack"
-      ? `評価の観点（質問する側）:
-- 質問の狙いが明確だったか。何を認めさせようとしたかが伝わるか
-- 相手の逃げを許さず追及できたか。同じ質問を繰り返していないか
-- 答えを引き出したあと、それを自分の主張に結びつけられたか
-- 1つの質問が長すぎないか（質疑は8分しかない）
-
-${common}`
-      : `評価の観点（答える側）:
-- 自分の立論と矛盾しない答えができていたか
-- 墓穴を掘る譲歩をしていないか
-- 答えられない点をごまかさず、争点を移せていたか
-- 答えが長すぎて時間を浪費していないか
-
-${common}`;
-
-  return `
-次は政策ディベートの質疑練習の記録です。練習者の${
-    mode === "attack" ? "質問" : "回答"
-  }を講評してください。
-
-${focus}
-
-記録:
-${transcript}
-
-講評の方針:
-- 必ず「よかった点」から書くこと。練習を続けてもらうことが第一です
-- 指摘は具体的に。どの発言のどこが問題かを引用して示すこと
-- suggestions には、実際に使える言い換えの例文を入れること
-  （「もっと鋭く」のような抽象的な助言は書かない）
-- 上の減点項目に触れる場面があれば、**どの発言がどの項目にあたるか**を
-  明示すること。実際の試合で減点される箇所だからです
-- テーマそのものへの賛否は述べないこと。評価するのは質疑の運び方です
-
-出力は次のJSONのみ:
+出力するJSON:
 {
-  "strengths": ["よかった点"],
-  "weaknesses": ["次に直すとよい点"],
-  "suggestions": ["こう言い換えるとよい、という具体例"],
-  "summary": "全体の講評を2〜3文で"
+  "claim": [開始行, 終了行],
+  "sections": [
+    { "titleLine": 行, "type": "criteria", "subsections": [ { "titleLine": 行, "body": [開始行, 終了行] } ] }
+  ],
+  "conclusion": [開始行, 終了行]
 }
 `.trim();
 }

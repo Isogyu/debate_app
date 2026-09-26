@@ -1,5 +1,5 @@
 /**
- * 質疑シミュレーター（DESIGN.md §11 SIM）
+ * 質疑シミュレーター（v6 要件 F11）
  *
  * 練習回数を増やすのが目的なので、過去の練習も一覧で振り返れるようにする。
  */
@@ -8,10 +8,11 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
-import { practiceSessions, projects } from "@/db/schema";
+import { caseVariants, practiceSessions, projects } from "@/db/schema";
 import { Breadcrumb, Header } from "@/components/chrome";
-import { currentUserId } from "@/lib/session";
-import { SimulatorClient } from "./simulator-client";
+import { CASE_ORIGIN_LABELS, SIDE_LABELS } from "@/domain/types";
+import { requireSession } from "@/lib/session";
+import { SimulatorClient, type VariantOption } from "./simulator-client";
 
 export const dynamic = "force-dynamic";
 
@@ -27,16 +28,29 @@ export default async function SimulatorPage({
   params: Promise<{ projectId: string }>;
   searchParams: Promise<{ session?: string }>;
 }) {
+  const userId = await requireSession();
   const { projectId } = await params;
   const { session: sessionId } = await searchParams;
 
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId));
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   if (!project) notFound();
 
-  const userId = await currentUserId();
+  const variantRows = await db
+    .select()
+    .from(caseVariants)
+    .where(eq(caseVariants.projectId, projectId))
+    .orderBy(caseVariants.side, caseVariants.origin, caseVariants.createdAt);
+  // 本文の構造がない立論（取り込み途中など）はAIが立脚できないので選ばせない
+  const variants: VariantOption[] = variantRows
+    .filter((v) => v.debateCase.sections.length > 0)
+    .map((v) => ({ id: v.id, side: v.side, origin: v.origin, label: v.label }));
+  const variantName = new Map(
+    variantRows.map((v) => [
+      v.id,
+      `${SIDE_LABELS[v.side]}・${CASE_ORIGIN_LABELS[v.origin]}「${v.label}」`,
+    ]),
+  );
+
   const sessions = await db
     .select()
     .from(practiceSessions)
@@ -44,13 +58,17 @@ export default async function SimulatorPage({
     .orderBy(desc(practiceSessions.createdAt))
     .limit(20);
 
-  const current = sessionId
-    ? sessions.find((s) => s.id === sessionId)
-    : undefined;
+  let current = sessionId ? sessions.find((s) => s.id === sessionId) : undefined;
+  if (sessionId && !current) {
+    // 21件目より古い練習も、URLで直接開けるようにする
+    [current] = await db
+      .select()
+      .from(practiceSessions)
+      .where(eq(practiceSessions.id, sessionId));
+    if (current && current.projectId !== projectId) current = undefined;
+  }
 
-  const myFinished = sessions.filter(
-    (s) => s.userId === userId && s.finishedAt,
-  ).length;
+  const myFinished = sessions.filter((s) => s.userId === userId && s.finishedAt).length;
 
   return (
     <>
@@ -67,7 +85,7 @@ export default async function SimulatorPage({
           <h1 className="text-2xl font-bold">質疑練習</h1>
           {myFinished > 0 && (
             <span className="text-sm text-[var(--muted)]">
-              あなたの練習回数: {myFinished}回
+              最近のあなたの練習: {myFinished}回
             </span>
           )}
           {current && (
@@ -82,14 +100,20 @@ export default async function SimulatorPage({
 
         <SimulatorClient
           projectId={projectId}
+          variants={variants}
           initialSession={
             current
               ? {
                   id: current.id,
                   mode: current.mode,
+                  userVariantId: current.userVariantId,
+                  userCaseName: variantName.get(current.userVariantId) ?? "（不明）",
+                  opponentCaseName: variantName.get(current.opponentVariantId) ?? "（不明）",
                   turns: current.turns,
                   feedback: current.feedback ?? undefined,
+                  reflection: current.reflection ?? undefined,
                   finished: !!current.finishedAt,
+                  mine: current.userId === userId,
                 }
               : null
           }
@@ -97,7 +121,7 @@ export default async function SimulatorPage({
 
         {!current && sessions.length > 0 && (
           <section className="mt-8">
-            <h2 className="mb-3 font-bold">これまでの練習</h2>
+            <h2 className="mb-3 font-bold">これまでの練習（最近20件）</h2>
             <ul className="space-y-2">
               {sessions.map((s) => (
                 <li key={s.id}>
@@ -107,9 +131,13 @@ export default async function SimulatorPage({
                   >
                     <span className="font-bold">{MODE_LABELS[s.mode]}</span>
                     <span className="ml-2 text-[var(--muted)]">
-                      {s.createdAt.slice(0, 16).replace("T", " ")}／
-                      やり取り {s.turns.filter((t) => t.speaker === "user").length} 回
+                      {s.createdAt.slice(0, 16).replace("T", " ")}／やり取り{" "}
+                      {s.turns.filter((t) => t.speaker === "user").length} 回
                       {s.finishedAt ? "／講評あり" : "／途中"}
+                    </span>
+                    <span className="mt-1 block text-xs text-[var(--muted)]">
+                      自分: {variantName.get(s.userVariantId) ?? "（不明）"}　相手:{" "}
+                      {variantName.get(s.opponentVariantId) ?? "（不明）"}
                     </span>
                   </Link>
                 </li>

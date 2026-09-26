@@ -10,7 +10,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { issueCategories, projects } from "@/db/schema";
 import { Breadcrumb, Header } from "@/components/chrome";
-import { latestJob } from "@/lib/jobs/runner";
+import { latestAnalysisJob } from "@/lib/jobs/runner";
 import { AnalysisForm } from "./analysis-form";
 import { RetryAnalysis } from "./retry-analysis";
 
@@ -33,7 +33,7 @@ export default async function AnalysisPage({
     .from(issueCategories)
     .where(eq(issueCategories.projectId, projectId));
 
-  const job = await latestJob(projectId);
+  const job = await latestAnalysisJob(projectId);
   const analysisStep = job?.steps.find((s) => s.step === "analysis");
 
   return (
@@ -50,7 +50,7 @@ export default async function AnalysisPage({
         <div className="mb-2 flex items-baseline justify-between">
           <h1 className="text-2xl font-bold">分析結果の確認</h1>
           <p className="text-sm text-[var(--muted)]">
-            ①論題入力 ─ <b className="text-[var(--foreground)]">②分析確認</b> ─ ③生成
+            論題の分析（確認してから生成）
           </p>
         </div>
         <p className="mb-6 text-sm text-[var(--muted)]">論題: {project.resolution}</p>

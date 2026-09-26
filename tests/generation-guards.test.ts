@@ -64,28 +64,49 @@ test("複合マーカーも既出として扱う", () => {
 // 実際にAPIを回したときに見つかった不具合への対応。
 
 test("分岐の終端で followUpKey が null でも受け付ける", async () => {
-  const { crossExamOutputSchema } = await import("../src/domain/schemas.ts");
+  const { crossExamChainsSchema } = await import("../src/domain/schemas.ts");
   // LLMは「値なし」を省略ではなく null で返してくる
-  const result = crossExamOutputSchema.safeParse({
-    nodes: [
+  const result = crossExamChainsSchema.safeParse({
+    chains: [
       {
-        key: "q1",
-        direction: "attack",
-        question: "本当に防げているのですか？",
-        purpose: "前提を揺さぶる",
+        attackPoint: "premise",
+        goal: "過剰な規制であることを認めさせる",
+        priority: 4,
         categoryNames: ["公平性"],
-        targetClaimTitle: null,
-        branches: [
-          { expectedAnswer: "防げています", followUpKey: "q2", exposedWeakness: null },
-          { expectedAnswer: "いいえ", followUpKey: null, exposedWeakness: "過剰性を認める" },
+        nodes: [
+          {
+            key: "q1",
+            question: "本当に防げているのですか？",
+            purpose: "前提を揺さぶる",
+            modelAnswer: "防げています。",
+            branches: [
+              { kind: "admit", expectedAnswer: "防げています", followUpKey: "q2", exposedWeakness: null },
+              { kind: "deny", expectedAnswer: "いいえ", followUpKey: null, exposedWeakness: "過剰性を認める" },
+            ],
+          },
         ],
       },
     ],
   });
   assert.ok(result.success, JSON.stringify(result.error?.issues));
   // null は undefined に寄せて、後続の処理で分岐しなくて済むようにする
-  assert.equal(result.data.nodes[0].branches[1].followUpKey, undefined);
-  assert.equal(result.data.nodes[0].targetClaimTitle, undefined);
+  assert.equal(result.data.chains[0].nodes[0].branches[1].followUpKey, undefined);
+});
+
+test("優先度や攻撃点が崩れていても既定値で受け付ける", async () => {
+  const { crossExamChainsSchema } = await import("../src/domain/schemas.ts");
+  const result = crossExamChainsSchema.safeParse({
+    chains: [
+      {
+        attackPoint: "unknown",
+        priority: "高",
+        nodes: [{ key: "q1", question: "質問", branches: [] }],
+      },
+    ],
+  });
+  assert.ok(result.success, JSON.stringify(result.error?.issues));
+  assert.equal(result.data.chains[0].attackPoint, "premise");
+  assert.equal(result.data.chains[0].priority, 3);
 });
 
 test("評価基準の根拠法令が null でも受け付ける", async () => {
