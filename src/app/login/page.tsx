@@ -43,6 +43,12 @@ export default async function LoginPage({
 
       <LoginForm next={next ?? "/"} />
 
+      <p className="mt-4 text-sm">
+        <a href="/manual.html" target="_blank" rel="noopener" className="text-[var(--accent)] underline">
+          はじめての方へ：使い方の説明書を読む
+        </a>
+      </p>
+
       <p className="mt-6 text-xs text-[var(--muted)]">
         ※お名前は自己申告です。「誰が直したか」の目安として記録しますが、
         なりすましを防ぐ仕組みではありません。

@@ -1,0 +1,667 @@
+<!doctype html>
+<!--
+  ソースを開いたあなたへ。
+  ようこそ、こちら側へ。ここから先は取扱説明書なので、面白いものは何も出てきません。
+  バグを見つけたら、ページ下の小さなリンクからどうぞ。「私の環境では動きます」は受け付けていません。
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ディベート支援アプリ 使い方ガイド</title>
+<meta name="description" content="ゼミ生向け、ディベート支援アプリの使い方。はじめてでも、これだけ読めば使えます。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0b2a5b;
+    --blue: #0063b1;
+    --blue-soft: #e8f1fa;
+    --red: #c8102e;
+    --ink: #1f2933;
+    --muted: #5f6b76;
+    --line: #dde3ea;
+    --bg-band: #f4f6f9;
+    --ok: #1b7f4c;
+    --warn: #b45309;
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    font-size: 16px;
+    line-height: 1.9;
+    letter-spacing: .02em;
+  }
+  a { color: var(--blue); }
+  img { max-width: 100%; }
+
+  /* ── ヘッダー ───────────────────────── */
+  .site-header {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255,255,255,.96);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(6px);
+  }
+  .site-header .inner {
+    max-width: 1180px; margin: 0 auto; padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--navy); }
+  .brand .mark {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--navy); color: #fff;
+    display: grid; place-items: center; font-weight: 700; font-size: 15px;
+  }
+  .brand .name { font-weight: 700; font-size: 17px; line-height: 1.3; }
+  .brand .name small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: .12em; font-family: Montserrat, sans-serif; }
+  .header-link {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--navy); color: #fff; text-decoration: none;
+    padding: 9px 18px; border-radius: 999px; font-size: 14px; font-weight: 500; white-space: nowrap;
+  }
+  .header-link::after { content: "→"; }
+
+  /* ── ヒーロー ───────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, var(--navy) 0%, #12407f 60%, var(--blue) 100%);
+    color: #fff; position: relative; overflow: hidden;
+  }
+  .hero::after {
+    content: ""; position: absolute; right: -120px; top: -120px;
+    width: 420px; height: 420px; border-radius: 50%;
+    border: 60px solid rgba(255,255,255,.06);
+  }
+  .hero .inner { max-width: 1180px; margin: 0 auto; padding: 72px 24px 64px; position: relative; z-index: 1; }
+  .eyebrow {
+    font-family: Montserrat, sans-serif; font-weight: 700; font-size: 13px;
+    letter-spacing: .24em; text-transform: uppercase;
+  }
+  .hero .eyebrow { color: #9cc7ee; }
+  .hero h1 { font-size: clamp(28px, 4.2vw, 44px); line-height: 1.4; margin: 10px 0 18px; letter-spacing: .04em; }
+  .hero p.lead { font-size: 17px; max-width: 720px; margin: 0; color: #e3eefb; }
+  .hero .meta { margin-top: 26px; font-size: 13px; color: #b9d3ee; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+  .hero .meta span::before { content: "■ "; color: var(--red); }
+
+  /* ── レイアウト ─────────────────────── */
+  .layout { max-width: 1180px; margin: 0 auto; padding: 48px 24px 80px; display: grid; grid-template-columns: 250px 1fr; gap: 56px; }
+  .toc { position: sticky; top: 96px; align-self: start; font-size: 14px; }
+  .toc .eyebrow { color: var(--blue); }
+  .toc h2 { font-size: 16px; margin: 4px 0 14px; color: var(--navy); }
+  .toc ol { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); }
+  .toc li a {
+    display: block; padding: 7px 0 7px 16px; margin-left: -2px;
+    color: var(--ink); text-decoration: none; border-left: 2px solid transparent; line-height: 1.5;
+  }
+  .toc li a:hover { color: var(--blue); border-left-color: var(--blue); }
+  .toc li a .no { font-family: Montserrat, sans-serif; color: var(--blue); font-weight: 700; margin-right: 8px; font-size: 12px; }
+
+  article { min-width: 0; }
+  .post-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+  .tag { display: inline-block; font-size: 12px; padding: 3px 12px; border-radius: 999px; background: var(--blue-soft); color: var(--blue); font-weight: 500; }
+
+  section.chapter { padding: 8px 0 40px; border-bottom: 1px solid var(--line); margin-bottom: 40px; }
+  section.chapter:last-of-type { border-bottom: 0; }
+  .chapter-head { margin-bottom: 18px; }
+  .chapter-head .eyebrow { color: var(--blue); }
+  .chapter-head h2 {
+    font-size: clamp(22px, 2.6vw, 28px); color: var(--navy); margin: 6px 0 0; line-height: 1.5;
+    padding-bottom: 12px; position: relative;
+  }
+  .chapter-head h2::after { content: ""; position: absolute; left: 0; bottom: 0; width: 48px; height: 3px; background: var(--red); }
+  h3 { font-size: 19px; color: var(--navy); margin: 30px 0 10px; padding-left: 12px; border-left: 4px solid var(--blue); line-height: 1.5; }
+  p { margin: 0 0 1em; }
+  strong { color: var(--navy); }
+  ul, ol { padding-left: 1.4em; }
+  li { margin-bottom: .35em; }
+
+  /* ── 手順 ─────────────────────────── */
+  .steps { list-style: none; padding: 0; counter-reset: step; margin: 18px 0 24px; }
+  .steps > li {
+    counter-increment: step; position: relative; padding: 16px 18px 16px 64px;
+    background: var(--bg-band); border-radius: var(--radius); margin-bottom: 10px;
+  }
+  .steps > li::before {
+    content: counter(step); position: absolute; left: 16px; top: 16px;
+    width: 32px; height: 32px; border-radius: 50%; background: var(--navy); color: #fff;
+    display: grid; place-items: center; font-family: Montserrat, sans-serif; font-weight: 700; font-size: 14px;
+  }
+  .steps > li b { color: var(--navy); }
+
+  /* ── 囲み ─────────────────────────── */
+  .note { border-radius: var(--radius); padding: 16px 20px 14px 20px; margin: 18px 0 22px; border: 1px solid; }
+  .note .label { font-weight: 700; font-size: 14px; display: block; margin-bottom: 4px; }
+  .note p:last-child, .note ul:last-child { margin-bottom: 0; }
+  .note.point { background: var(--blue-soft); border-color: #bcd6ee; }
+  .note.point .label { color: var(--blue); }
+  .note.warn { background: #fff7ec; border-color: #f2d3a8; }
+  .note.warn .label { color: var(--warn); }
+  .note.must { background: #fdf0f2; border-color: #f0c2ca; }
+  .note.must .label { color: var(--red); }
+
+  /* ── 画面の部品の見本 ─────────────── */
+  .ui { display: inline-block; font-size: 13px; line-height: 1.4; padding: 5px 12px; border-radius: 4px; border: 1px solid var(--line); background: #fff; color: var(--ink); white-space: nowrap; vertical-align: middle; font-weight: 500; }
+  .ui.primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; font-weight: 700; }
+  .ui.outline { border: 2px solid #1d4ed8; color: #1d4ed8; font-weight: 700; }
+  .ui.danger { border-color: #c2410c; color: #c2410c; }
+  .ui.badge-aff { background: #15803d; color: #fff; border-color: #15803d; font-weight: 700; }
+  .ui.badge-neg { background: #c2410c; color: #fff; border-color: #c2410c; font-weight: 700; }
+  .ui.unverified { border-color: #c2410c; color: #c2410c; }
+  .ui.verified { border-color: #15803d; color: #15803d; }
+
+  .mock { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 18px 0 24px; background: #fff; box-shadow: 0 8px 24px rgba(11,42,91,.06); }
+  .mock .bar { background: var(--bg-band); border-bottom: 1px solid var(--line); padding: 8px 12px; font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .mock .bar i { width: 9px; height: 9px; border-radius: 50%; background: #cfd6de; display: inline-block; }
+  .mock .body { padding: 18px 20px; font-size: 14px; line-height: 1.8; }
+  .mock .tabs { display: flex; flex-wrap: wrap; gap: 4px 16px; border-bottom: 1px solid var(--line); margin-bottom: 12px; font-size: 13px; }
+  .mock .tabs span { padding: 6px 2px; color: var(--muted); }
+  .mock .tabs span.on { color: var(--ink); font-weight: 700; border-bottom: 2px solid #1d4ed8; }
+  .mock .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+  .meter { height: 10px; background: #e5e7eb; border-radius: 99px; position: relative; overflow: hidden; margin: 8px 0 4px; }
+  .meter .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 91%; background: var(--ok); }
+  .meter .zone { position: absolute; right: 0; top: 0; bottom: 0; width: 10%; background: rgba(27,127,76,.25); }
+
+  /* ── 表 ─────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; vertical-align: top; line-height: 1.7; }
+  th { background: var(--bg-band); color: var(--navy); white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
+
+  /* ── よくある質問 ───────────────────── */
+  details.faq { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; background: #fff; }
+  details.faq summary { cursor: pointer; padding: 14px 18px 14px 50px; font-weight: 700; color: var(--navy); position: relative; list-style: none; }
+  details.faq summary::-webkit-details-marker { display: none; }
+  details.faq summary::before { content: "Q"; position: absolute; left: 16px; top: 13px; font-family: Montserrat, sans-serif; color: var(--blue); font-size: 18px; }
+  details.faq summary::after { content: "＋"; position: absolute; right: 16px; top: 13px; color: var(--muted); }
+  details.faq[open] summary::after { content: "－"; }
+  details.faq .ans { padding: 0 18px 14px 50px; position: relative; }
+  details.faq .ans::before { content: "A"; position: absolute; left: 16px; top: 0; font-family: Montserrat, sans-serif; color: var(--red); font-size: 18px; font-weight: 700; }
+
+  /* ── 小ネタ（分かる人にだけ分かる） ───── */
+  .aside { font-size: 12px; color: var(--muted); border-left: 2px dotted var(--line); padding-left: 10px; margin: -6px 0 18px; }
+  .aside code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg-band); padding: 0 4px; border-radius: 3px; }
+
+  /* ── 締め ─────────────────────────── */
+  .cta { background: var(--bg-band); border-radius: 8px; padding: 28px; text-align: center; margin-top: 10px; }
+  .cta .eyebrow { color: var(--blue); }
+  .cta p { margin: 8px 0 18px; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; background: var(--navy); color: #fff; text-decoration: none; padding: 13px 28px; border-radius: 999px; font-weight: 700; }
+  .btn::after { content: "→"; }
+
+  .site-footer { background: var(--navy); color: #c9d6e8; font-size: 13px; }
+  .site-footer .inner { max-width: 1180px; margin: 0 auto; padding: 36px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; align-items: flex-end; }
+  .site-footer .title { color: #fff; font-weight: 700; font-size: 15px; }
+  .site-footer .tiny { font-size: 11px; color: #8fa6c4; }
+  .site-footer .tiny a { color: #8fa6c4; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; gap: 24px; padding-top: 28px; }
+    .toc { position: static; background: var(--bg-band); padding: 18px 20px; border-radius: 8px; }
+    .toc ol { columns: 2; column-gap: 20px; border-left: 0; }
+    .toc li a { padding-left: 0; border-left: 0; margin-left: 0; }
+  }
+  @media (max-width: 560px) {
+    body { font-size: 15px; }
+    .site-header .inner { padding: 10px 16px; }
+    .header-link { padding: 8px 14px; font-size: 13px; }
+    .brand .name small { display: none; }
+    .brand .name { font-size: 15px; white-space: nowrap; }
+    .hero .inner { padding: 48px 16px 44px; }
+    .layout { padding-left: 16px; padding-right: 16px; }
+    .toc ol { columns: 1; }
+    .steps > li { padding-left: 58px; }
+  }
+  @media print {
+    .site-header, .toc, .cta .btn { display: none; }
+    .layout { display: block; padding: 0; }
+    .hero { background: #fff; color: var(--ink); }
+    .hero .eyebrow, .hero p.lead, .hero .meta { color: var(--ink); }
+    details.faq { break-inside: avoid; }
+    details.faq .ans { display: block; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="#top">
+      <span class="mark">討</span>
+      <span class="name">ディベート支援アプリ<small>USER GUIDE</small></span>
+    </a>
+    <a class="header-link" href="https://debate-app-zemi.fly.dev/">アプリを開く</a>
+  </div>
+</header>
+
+<div class="hero" id="top">
+  <div class="inner">
+    <div class="eyebrow">Guide for Seminar Members</div>
+    <h1>はじめてのディベート支援アプリ<br>使い方ガイド</h1>
+    <p class="lead">立論の準備から、質疑の練習、最終弁論まで。このページを上から順に読めば、今日から使い始められます。</p>
+    <div class="meta">
+      <span>対象：ゼミ生のみなさん</span>
+      <span>読む時間：約15分</span>
+      <span>必要なもの：パソコンかスマホ</span>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <nav class="toc" aria-label="目次">
+    <div class="eyebrow">Contents</div>
+    <h2>もくじ</h2>
+    <ol>
+      <li><a href="#about"><span class="no">01</span>このアプリでできること</a></li>
+      <li><a href="#login"><span class="no">02</span>はじめて開くとき</a></li>
+      <li><a href="#theme"><span class="no">03</span>論題（テーマ）を登録する</a></li>
+      <li><a href="#generate"><span class="no">04</span>立論をつくってもらう</a></li>
+      <li><a href="#upload"><span class="no">05</span>自分の立論・資料を登録する</a></li>
+      <li><a href="#case"><span class="no">06</span>立論の画面の見かた</a></li>
+      <li><a href="#questions"><span class="no">07</span>質疑とフローチャート</a></li>
+      <li><a href="#closing"><span class="no">08</span>最終弁論と戦い方</a></li>
+      <li><a href="#practice"><span class="no">09</span>練習する</a></li>
+      <li><a href="#export"><span class="no">10</span>印刷・Wordで持ち出す</a></li>
+      <li><a href="#check"><span class="no">11</span>「確認済」のルール</a></li>
+      <li><a href="#faq"><span class="no">12</span>困ったときは</a></li>
+    </ol>
+  </nav>
+
+  <article>
+    <div class="post-meta">
+      <span class="tag">使い方</span>
+      <span class="tag">はじめての方へ</span>
+      <span class="tag">保存版</span>
+    </div>
+
+    <!-- 01 -->
+    <section class="chapter" id="about">
+      <div class="chapter-head">
+        <div class="eyebrow">01 / About</div>
+        <h2>このアプリでできること</h2>
+      </div>
+      <p>このアプリは、ディベートの試合に向けた準備をまとめて手伝ってくれる道具です。大きく分けて、できることは次の2つです。</p>
+      <ol>
+        <li><strong>自分たちで書いた立論を登録して、質疑に強くする</strong><br>
+          登録した立論に対して、相手から来そうな質問と、その答え方を用意してくれます。</li>
+        <li><strong>AIに立論と資料をつくってもらう</strong><br>
+          論題を入れると、賛成側・反対側の立論と、それを裏づける資料を用意してくれます。</li>
+      </ol>
+      <p>どちらの立論にも、次のものが自動でそろいます。</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>質疑と回答</th><td>相手が突いてきそうな質問と、守る側の模範回答。質問を重ねて追い詰める流れもあります。</td></tr>
+          <tr><th>フローチャート</th><td>「相手が認めたら」「否定したら」で次の質問が分かれる、質疑の地図です。</td></tr>
+          <tr><th>最終弁論の雛形</th><td>空欄に質疑の結果を書き込むだけで、1分の最終弁論ができる型と記入例です。</td></tr>
+          <tr><th>特徴と戦い方</th><td>その立論の強み・弱み、守るべきところ、勝ち筋のまとめです。</td></tr>
+        </table>
+      </div>
+      <p>さらに、<strong>読み上げタイマー</strong>や、<strong>AIを相手にした質疑の練習</strong>もできます。</p>
+      <div class="note must">
+        <span class="label">はじめに、ひとつだけ大切なこと</span>
+        <p>AIは便利ですが、まちがえることがあります。<strong>試合で使う前に、必ず自分の目で確かめてください。</strong>確かめ方は「<a href="#check">11「確認済」のルール</a>」で説明しています。</p>
+      </div>
+    </section>
+
+    <!-- 02 -->
+    <section class="chapter" id="login">
+      <div class="chapter-head">
+        <div class="eyebrow">02 / Getting Started</div>
+        <h2>はじめて開くとき</h2>
+      </div>
+      <ol class="steps">
+        <li><b>アプリを開きます。</b><br>パソコンでもスマホでも、いつも使っているインターネットの画面（Safari や Chrome など）で、次のアドレスを開きます。<br><a href="https://debate-app-zemi.fly.dev/">https://debate-app-zemi.fly.dev/</a></li>
+        <li><b>「合言葉」を入れます。</b><br>ゼミで共有している合言葉です。わからない場合は、ゼミの管理担当に聞いてください。</li>
+        <li><b>「お名前」を入れて、ログインします。</b><br>名前は、誰が練習したか・誰が直したかを見分けるためだけに使います。いつも同じ名前で入ると、自分の練習の記録を見返せます。</li>
+      </ol>
+      <div class="note point">
+        <span class="label">ポイント</span>
+        <p>最初の画面がなかなか表示されないときは、10〜30秒ほど待ってください。しばらく誰も使っていないと、アプリがひと休みしていることがあり、起き上がるのに少し時間がかかります。</p>
+      </div>
+      <p class="aside">※ 冷蔵庫のプリンと同じで、コールドスタートは少し待つと美味しくなります。</p>
+    </section>
+
+    <!-- 03 -->
+    <section class="chapter" id="theme">
+      <div class="chapter-head">
+        <div class="eyebrow">03 / Theme</div>
+        <h2>論題（テーマ）を登録する</h2>
+      </div>
+      <p>このアプリで扱う論題は、<strong>いつも1つだけ</strong>です。はじめて使うときは、まず論題を登録します。</p>
+      <ol class="steps">
+        <li><b>論題を入力します。</b><br>例：日本は所得税法第56条および第57条を廃止すべきである</li>
+        <li><b>「論題の分析を確認してから生成する」を選ぶか決めます。</b><br>
+          チェックを入れると、AIが論題を分析したところ（関係する法律・争点・評価の基準）でいったん止まります。内容を直してから立論づくりに進めます。<br>
+          チェックを入れなければ、止まらずに最後まで進みます。<strong>迷ったらチェックなしで大丈夫です。</strong></li>
+        <li><b>「テーマを登録する」を押します。</b><br>ここから、賛成側・反対側の立論づくりが自動で始まります。</li>
+      </ol>
+      <h3>論題を変えるとき</h3>
+      <p>ホーム画面の下にある <span class="ui">テーマを変更する</span> から、新しい論題を登録します。前の論題は「過去テーマ」として残り、あとから見たり印刷したりできます。過去テーマの資料は、新しい論題の立論にコピーすることもできます。</p>
+      <div class="note warn">
+        <span class="label">注意</span>
+        <p>立論をつくっている最中は、論題を変えられません。つくり終わるのを待ってから変えてください。</p>
+      </div>
+    </section>
+
+    <!-- 04 -->
+    <section class="chapter" id="generate">
+      <div class="chapter-head">
+        <div class="eyebrow">04 / AI Case Builder</div>
+        <h2>立論をつくってもらう</h2>
+      </div>
+      <p>論題を登録すると、賛成側・反対側それぞれ1本ずつ、立論づくりが始まります。ホーム画面に進み具合が表示されます。</p>
+      <p>AIは、次の順番で作業します。</p>
+      <ol>
+        <li>立論の骨組み → 本文（読み上げて5分に収まる長さに自動で調整）</li>
+        <li>資料を集める・つくる（法令、国会での発言、統計、論文など）</li>
+        <li>数字のチェック → 質疑と回答 → 最終弁論の雛形 → 特徴と戦い方</li>
+      </ol>
+      <div class="note warn">
+        <span class="label">画面は開いたままにしてください</span>
+        <p>全部そろうまで、<strong>数分〜十数分</strong>かかります。<strong>この間は画面を開いたままにしておく</strong>と、止まらずに最後まで進みます。</p>
+        <p>画面を閉じると、数分後にアプリがひと休みに入り、作業も一時停止します。次に誰かがアプリを開いたときに、止まったところから自動で続きが始まるので、やり直しにはなりません。</p>
+      </div>
+      <h3>別の切り口でもう1本</h3>
+      <p>各側の下にある <span class="ui primary">別の切り口でもう1本（残り2本）</span> を押すと、考え方を変えた立論をもう1本つくります。AIがつくれる立論は、<strong>1つの論題につき、各側3本まで</strong>です。ボタンに残りの本数が出ています。</p>
+      <h3>途中で失敗したとき</h3>
+      <p>進み具合の表示で、項目が赤い <b>×</b> になることがあります。その場合は、表示の中の <span class="ui">失敗したところからやり直す</span> を押してください。うまくいった項目はそのままで、失敗した項目だけをやり直します。</p>
+      <p class="aside">※ 困ったときの「一度消して入れ直す」は、このアプリでは不要です。<code>Ctrl+Alt+Delete</code> の出番はありません。</p>
+    </section>
+
+    <!-- 05 -->
+    <section class="chapter" id="upload">
+      <div class="chapter-head">
+        <div class="eyebrow">05 / Upload</div>
+        <h2>自分の立論・資料を登録する</h2>
+      </div>
+      <p>自分たちで書いた立論も登録できます。登録した立論にも、質疑・フローチャート・最終弁論の雛形・戦い方がそろいます。<strong>立論の本文は、AIが書き換えることはありません。</strong></p>
+      <ol class="steps">
+        <li><b>ホーム画面の <span class="ui outline">自作の立論・資料を登録する</span> を押します。</b></li>
+        <li><b>ファイルを選びます。</b><br>
+          「立論（Word）」の <span class="ui primary">ファイルを選択</span> で立論を、<br>
+          「資料（Word）」の <span class="ui primary">ファイルを選択</span> で参考資料を選びます（資料はなくても登録できます）。</li>
+        <li><b><span class="ui primary">登録する</span> を押します。</b><br>数分で取り込みと、質疑などの準備が終わります。</li>
+      </ol>
+      <div class="note must">
+        <span class="label">登録できるのは Word のファイルだけです</span>
+        <p>PDFは文字がうまく読み取れないことがあるため、登録できません。PDFしかない場合は、元のWordファイルを使うか、Wordで開いて保存し直してください。古い形式（.doc）も、Wordで開いて「.docx」で保存し直すと登録できます。</p>
+      </div>
+      <h3>うまく読み取ってもらうための書き方</h3>
+      <ul>
+        <li>立論は、ふだんどおり <strong>「Ⅰ. 主張」「Ⅱ. 理由」「Ⅲ. 結論」</strong> と、<strong>「1.」「（1）」</strong> の見出しで書いてください。</li>
+        <li>本文の中の資料の指し方は <strong>【資料1参照】</strong> または <strong>（資料1）</strong> のどちらでも大丈夫です。</li>
+        <li>資料のファイルは、1つずつ <strong>【資料1】【資料2】…</strong> の見出しで区切ってください。立論の番号と合わせて結びつけます。</li>
+        <li>番号が合わないところがあれば、登録後の画面で知らせてくれます。</li>
+      </ul>
+      <h3>賛成側か反対側かは、自動で判定します</h3>
+      <p>立論の「主張」の書き方から、賛成側か反対側かを自動で見分けます。もし逆になっていたら、立論の画面の上にある <span class="ui">賛成側・反対側を入れ替える</span> を押してください。</p>
+      <h3>資料だけをあとから足す</h3>
+      <p>登録画面で「資料（Word）」だけを選ぶと、どの立論に付けるかを聞かれます。立論を選んで登録してください。</p>
+      <ul>
+        <li>【資料3】のように番号があれば、その番号の資料として入ります。同じ番号の資料がすでにあれば、新しいものに置き換わります（AIが「作成手順」までしか作れなかった資料を、自分で見つけた資料に差し替えるときに便利です）。</li>
+        <li>番号がなければ、次の番号の資料として追加されます。本文の【資料○参照】は自分で書き足してください。</li>
+      </ul>
+      <p>立論の画面の「資料」タブにある <span class="ui outline">自作の資料をこの立論に登録する</span> からも登録できます。</p>
+      <h3>登録した立論を消す</h3>
+      <p>間違えて登録したときは、立論の画面の上にある <span class="ui danger">この立論を削除</span> を押し、もう一度 <span class="ui" style="background:#c2410c;color:#fff;border-color:#c2410c">削除する</span> を押します。付いていた資料・質疑・練習の記録も一緒に消え、元に戻せません。</p>
+      <p>なお、<strong>AIがつくった立論は削除できません</strong>（各側3本までの約束を守るためです）。</p>
+      <p class="aside">※ 自分で登録したものは消せて、AIがつくったものは消せない。つまりこのアプリに <code>rm -rf /</code> は存在しません。安心してください。</p>
+    </section>
+
+    <!-- 06 -->
+    <section class="chapter" id="case">
+      <div class="chapter-head">
+        <div class="eyebrow">06 / Case Page</div>
+        <h2>立論の画面の見かた</h2>
+      </div>
+      <p>ホーム画面で立論の名前を押すと、立論の画面が開きます。上に6つのタブが並んでいます。</p>
+      <div class="mock" aria-hidden="true">
+        <div class="bar"><i></i><i></i><i></i>&nbsp; 立論の画面</div>
+        <div class="body">
+          <div class="row"><span class="ui badge-aff">賛成側</span><span class="ui">生成（AI）</span><b>租税公平主義／環境変化型</b></div>
+          <div class="tabs"><span class="on">本文</span><span>資料</span><span>質疑と回答</span><span>フローチャート</span><span>最終弁論の雛形</span><span>特徴と戦い方</span></div>
+          <div><b>読み上げ 4分48秒</b> <span style="color:#5f6b76">1,536字 / 適正 1440〜1600字</span></div>
+          <div class="meter"><div class="fill"></div><div class="zone"></div></div>
+          <div style="color:#5f6b76;font-size:12px">緑の帯が適正です。超過も、30秒以上余るのも減点対象です。</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <tr><th>本文</th><td>立論の本文。「Ⅰ. 主張」「Ⅱ. 理由」「Ⅲ. 結論」の形で表示されます。読み上げ時間の目安と、数字のチェックの結果もここに出ます。</td></tr>
+          <tr><th>資料</th><td>【資料1】【資料2】…の中身。出典・引用・表・グラフ・計算の過程が見られます。</td></tr>
+          <tr><th>質疑と回答</th><td>相手が突いてきそうな質問と、模範回答。試合で使う質問を選べます（<a href="#questions">07</a>）。</td></tr>
+          <tr><th>フローチャート</th><td>質疑の流れの地図（<a href="#questions">07</a>）。</td></tr>
+          <tr><th>最終弁論の雛形</th><td>1分の最終弁論の型と記入例（<a href="#closing">08</a>）。</td></tr>
+          <tr><th>特徴と戦い方</th><td>立論の強み・弱み・勝ち筋（<a href="#closing">08</a>）。</td></tr>
+        </table>
+      </div>
+      <h3>読み上げ時間のメーター</h3>
+      <p>立論は5分で読み切る必要があります。<strong>5分を超えても、30秒以上余っても減点</strong>です。メーターの緑の帯（4分30秒〜5分）に入っていれば適正です。</p>
+      <ul>
+        <li>早口で合わせるのではなく、<strong>文字数そのものを調整</strong>しましょう（早口・遅すぎも減点されます）。</li>
+        <li>読む速さは人によって違います。<span class="ui outline">実際に読んで測る（タイマー）</span> で一度測ると、自分の速さに合わせた目安が出ます。</li>
+      </ul>
+      <h3>本文を直す</h3>
+      <p>本文の各段落の <span class="ui">編集</span> で、自分で直せます。AIがつくった立論では <span class="ui">この部分を再生成</span> で、その段落だけAIに書き直してもらうこともできます。本文の【資料○参照】は消さずに残してください（資料との結びつきが切れてしまいます）。</p>
+      <h3>資料タブ ─「完成した資料」と「作成手順」</h3>
+      <p>AIは、国の法令のページ・国会の会議録・国の統計・論文など、<strong>公的な情報だけ</strong>から資料を集めます。</p>
+      <ul>
+        <li><strong>完成した資料：</strong>出典、引用した文章、統計なら表・グラフ・計算の過程が付いています。</li>
+        <li><strong>作成手順：</strong>AIが見つけられなかった資料です。「何を証明する資料か」「どんな言葉で探すか」「どこで探すか」「何を抜き出すか」が書いてあるので、それを見ながら自分で探してください。見つけたら、その場で中身を入力するか、Wordで資料を登録して差し替えられます。</li>
+      </ul>
+      <h3>数字のチェック</h3>
+      <p>立論や資料に出てくる数字について、「出典があるか」「計算が合っているか」「比べ方がそろっているか」「使い方に無理がないか」をチェックし、気になる点を本文タブに表示します。質疑で突かれやすいポイントでもあるので、目を通しておきましょう。</p>
+    </section>
+
+    <!-- 07 -->
+    <section class="chapter" id="questions">
+      <div class="chapter-head">
+        <div class="eyebrow">07 / Cross Examination</div>
+        <h2>質疑とフローチャート</h2>
+      </div>
+      <p>「質疑と回答」タブには、立論の段落ごとに質問が並んでいます。同じ質問が、見る人によって2通りに使えます。</p>
+      <ul>
+        <li><strong>相手の立論として見るとき：</strong>こちらから攻める質問の台本</li>
+        <li><strong>自分の立論として見るとき：</strong>相手から来る質問と、その答え方の準備</li>
+      </ul>
+      <h3>試合で使う質疑を選ぶ</h3>
+      <p>試合の質疑は8分です。全部は使えないので、<strong>使う質疑は自分たちで選びます</strong>。</p>
+      <div class="mock" aria-hidden="true">
+        <div class="bar"><i></i><i></i><i></i>&nbsp; 質疑と回答</div>
+        <div class="body">
+          <div class="row"><span class="ui primary">この質疑を使う</span></div>
+          <div style="font-size:12px;color:#5f6b76">前提　おすすめ度 ★★★★★　連鎖 2問　1（1）担税力</div>
+          <div><b>Q. 制度がつくられた当時の前提は、今も成り立っていますか？</b></div>
+          <hr style="border:0;border-top:1px dashed #dde3ea;margin:12px 0">
+          <div class="row"><span class="ui primary" style="font-size:12px">使う 1番目</span><span class="ui">↑</span><span class="ui">↓</span><span class="ui">外す</span></div>
+        </div>
+      </div>
+      <ol class="steps">
+        <li><b>使いたい質問の <span class="ui primary">この質疑を使う</span> を押します。</b><br>押した順に「使う 1番目」「使う 2番目」…と番号が付きます。</li>
+        <li><b>上の <span class="ui">使う質疑</span> を開くと、選んだ質問だけが並びます。</b><br><span class="ui">↑</span> <span class="ui">↓</span> で順番を入れ替え、<span class="ui">外す</span> で選ぶのをやめられます。</li>
+        <li><b>もっと質問がほしい段落は <span class="ui outline">この箇所の質疑をもっと</span> を押します。</b><br>今ある質問と同じ内容のものは除いて、新しい質問を足してくれます。</li>
+      </ol>
+      <p>「おすすめ度」の★は、AIが考える試合での使いやすさの目安です。選ぶときの参考にしてください。</p>
+      <h3>フローチャートの使いかた</h3>
+      <p>フローチャートは、質問に対して相手がどう答えるかで、次の質問が分かれていく流れを図にしたものです。</p>
+      <ul>
+        <li>箱の色：<span style="color:#1d4ed8;font-weight:700">青＝質問</span>、<span style="color:#15803d;font-weight:700">緑＝認める</span>、<span style="color:#c2410c;font-weight:700">オレンジ＝否定する</span>、<span style="color:#a16207;font-weight:700">黄土色＝はぐらかす</span>、<span style="color:#7e22ce;font-weight:700">紫＝引き出したい結論</span></li>
+        <li><strong>箱を押すと、そこまでのやりとりが台本の形で表示</strong>されます。</li>
+        <li>上の <span class="ui primary" style="font-size:12px">攻める側で見る</span> <span class="ui">守る側で見る</span> で、見かたを切り替えられます。守る側では、各質問の模範回答が表示されます。</li>
+        <li><strong>「使う質疑だけ」</strong>にチェックを入れると、自分たちで選んだ質問だけの流れになります。フローチャートの画面でも <span class="ui primary">この質疑を使う</span> で選べます。</li>
+      </ul>
+    </section>
+
+    <!-- 08 -->
+    <section class="chapter" id="closing">
+      <div class="chapter-head">
+        <div class="eyebrow">08 / Closing &amp; Strategy</div>
+        <h2>最終弁論と戦い方</h2>
+      </div>
+      <h3>最終弁論の雛形</h3>
+      <p>最終弁論は1分（約320字）です。質疑の内容を踏まえることが求められ、<strong>主張のくり返しや、新しい論点は減点</strong>されます。</p>
+      <p>雛形は2種類あります。</p>
+      <ul>
+        <li><strong>この立論で戦うチームの最終弁論</strong></li>
+        <li><strong>この立論と戦うチーム（相手側）の最終弁論</strong></li>
+      </ul>
+      <p>枠の中の【①相手が認めたこと】のような空欄に、試合の質疑で実際に出てきた内容を書き込むと、最終弁論ができあがります。質疑の流れごとの「記入例」も付いているので、書き方の参考にしてください。印刷して、試合中に手書きで埋めることもできます。</p>
+      <h3>特徴と戦い方</h3>
+      <p>その立論の強み・弱み、質疑で守るべきところ、絶対に譲ってはいけないこと、最終弁論での勝ち筋がまとまっています。試合前のチームの作戦会議に使ってください。</p>
+    </section>
+
+    <!-- 09 -->
+    <section class="chapter" id="practice">
+      <div class="chapter-head">
+        <div class="eyebrow">09 / Practice</div>
+        <h2>練習する</h2>
+      </div>
+      <p>ホーム画面の <span class="ui">練習（タイマー・読み上げ）</span> と <span class="ui">質疑練習</span> から始めます。</p>
+      <h3>タイマー</h3>
+      <p>立論5分・質疑8分・最終弁論1分を選んで使います。本番のタイムキーパーと同じく、<strong>残り1分と残り30秒で、画面の色が変わり大きく表示</strong>されます（音は出ません）。</p>
+      <h3>読み上げ練習</h3>
+      <p>立論を選ぶと、原稿が表示され、時間の経過に合わせて「今このあたりを読んでいれば5分に収まる」という目安の位置を示してくれます。読むのが速すぎる・遅すぎるが一目でわかります。</p>
+      <h3>質疑練習（AIが相手）</h3>
+      <ol class="steps">
+        <li><b>練習のしかたを選びます。</b><br>
+          <strong>相手に質問する：</strong>あなたが質問し、AIが相手の立論を守って答えます。<br>
+          <strong>相手から質問される：</strong>AIが質問し、あなたが自分の立論を守って答えます。</li>
+        <li><b>「自分が守る立論」と「AIが演じる相手の立論」を選んで、<span class="ui primary">練習を始める</span>。</b></li>
+        <li><b>文字でやりとりします。</b>本番と同じく、質問は短く1つずつ、答えは聞かれたことに短く答えましょう。</li>
+        <li><b>終わったら <span class="ui primary">練習を終えて講評をもらう</span>。</b><br>よかった点・次に直すとよい点・言い換えの例が表示されます。</li>
+      </ol>
+      <div class="note point">
+        <span class="label">練習の結果は、準備にも生かされます</span>
+        <ul>
+          <li>「相手から質問される」練習で答えに詰まった質問は、質疑の一覧で前のほうに並ぶようになります。</li>
+          <li>練習中にAIが出した新しい質問は、模範回答つきで質疑に追加されます。</li>
+          <li>練習の内容をもとにした、最終弁論の例も表示されます。</li>
+        </ul>
+      </div>
+      <p>講評は文字のやりとりから判断しているため、「相手の発言をさえぎったか」「長い沈黙」「声の大きさ・聞き取りやすさ」は判定していません。この3つは、ゼミの仲間に見てもらいましょう。</p>
+      <p class="aside">※ AIは疲れないので、何回練習に付き合わせても大丈夫です。無限ループにだけは気をつけて。</p>
+    </section>
+
+    <!-- 10 -->
+    <section class="chapter" id="export">
+      <div class="chapter-head">
+        <div class="eyebrow">10 / Export</div>
+        <h2>印刷・Wordで持ち出す</h2>
+      </div>
+      <p>ホーム画面の <span class="ui">エクスポート・印刷</span> から、立論を選んで出力します。</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Word（.docx）</th><td>立論と参考資料を、実際の提出物と同じ書式で保存できます。参考資料には統計の表とグラフも入ります。保存したファイルはWordで開いて直せます。</td></tr>
+          <tr><th>印刷・PDF</th><td>立論・参考資料・質疑フローチャート・最終弁論の雛形を印刷できます。印刷の画面で「PDFに保存」を選べば、PDFとしても保存できます。</td></tr>
+        </table>
+      </div>
+      <div class="note warn">
+        <span class="label">出力する前に</span>
+        <p>まだ「未確認」のものがあると、出力の画面で知らせてくれます。提出物にする前に、<a href="#check">確認</a>をすませておきましょう。</p>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section class="chapter" id="check">
+      <div class="chapter-head">
+        <div class="eyebrow">11 / Review Rule</div>
+        <h2>「確認済」のルール</h2>
+      </div>
+      <p>AIがつくったものには、はじめ <span class="ui unverified">AI生成（未確認）</span> という印が付いています。人が中身を確かめたら、<span class="ui">確認済にする</span> を押して <span class="ui verified">確認済</span> に変えます。</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>何を</th><th>何を確かめたら「確認済」にするか</th></tr>
+          <tr><td>資料</td><td>出典のリンクを開いて、引用文や数字が元の資料と一致しているか</td></tr>
+          <tr><td>本文</td><td>論理のつながりに無理がないか、【資料○参照】の資料が主張を本当に支えているか</td></tr>
+          <tr><td>質疑と回答</td><td>模範回答が立論と矛盾していないか、試合で使える言い方か</td></tr>
+          <tr><td>最終弁論の雛形</td><td>質疑の内容と合っているか、新しい論点が入っていないか</td></tr>
+          <tr><td>特徴と戦い方</td><td>チームの方針と合っているか</td></tr>
+        </table>
+      </div>
+      <div class="note must">
+        <span class="label">特に、資料は必ず元の資料を開いて確かめてください</span>
+        <p>審査では資料の正確さが問われます。「AIが書いたから大丈夫」ではなく、<strong>最後に責任を持つのは自分たち</strong>です。確認は、ゼミの誰が押してもかまいません。</p>
+      </div>
+    </section>
+
+    <!-- 12 -->
+    <section class="chapter" id="faq">
+      <div class="chapter-head">
+        <div class="eyebrow">12 / FAQ</div>
+        <h2>困ったときは</h2>
+      </div>
+
+      <details class="faq">
+        <summary>アプリの画面がなかなか表示されません。</summary>
+        <div class="ans"><p>しばらく誰も使っていないと、アプリがひと休みしています。10〜30秒ほど待ってから、もう一度開いてみてください。</p></div>
+      </details>
+      <details class="faq">
+        <summary>立論づくりが途中で止まったように見えます。</summary>
+        <div class="ans"><p>画面を閉じていた間に一時停止していた可能性があります。アプリを開けば、止まったところから自動で続きが始まります。作業が終わるまで、画面を開いたままにしておいてください。</p></div>
+      </details>
+      <details class="faq">
+        <summary>赤い「×」とエラーの文が出ました。</summary>
+        <div class="ans"><p>表示の中の <span class="ui">失敗したところからやり直す</span> を押してください。何度やっても同じ文が出るときは、その文をそのまま管理担当に伝えてください。</p></div>
+      </details>
+      <details class="faq">
+        <summary>PDFの立論が登録できません。</summary>
+        <div class="ans"><p>登録できるのは Word（.docx）だけです。元のWordファイルを使うか、Wordで開いて「.docx」形式で保存し直してから登録してください。</p></div>
+      </details>
+      <details class="faq">
+        <summary>登録した立論の本文が、文字化けしていたり、数字だらけだったりします。</summary>
+        <div class="ans"><p>その立論は <span class="ui danger">この立論を削除</span> で消して、Wordファイルで登録し直してください。Wordで開いたときに文字が正しく表示されているかも確かめてください。</p></div>
+      </details>
+      <details class="faq">
+        <summary>賛成側と反対側が逆に登録されました。</summary>
+        <div class="ans"><p>立論の画面の上にある <span class="ui">賛成側・反対側を入れ替える</span> を押してください。</p></div>
+      </details>
+      <details class="faq">
+        <summary>読み上げ時間が5分を超えます／30秒以上余ります。</summary>
+        <div class="ans"><p>超える場合は、説明を少しずつ削るより、<strong>論点をひとつ落とす</strong>ほうが確実です。余る場合は、理由づけを一段深めて分量を足しましょう。早口・ゆっくり読みで合わせるのは減点の対象です。</p></div>
+      </details>
+      <details class="faq">
+        <summary>資料が「作成手順」のままです。</summary>
+        <div class="ans"><p>AIが公的な情報から見つけられなかった資料です。書いてある手順（探す言葉・探す場所・抜き出すもの）どおりに探し、見つけたら資料タブで中身を入力するか、Wordで資料を登録して差し替えてください。</p></div>
+      </details>
+      <details class="faq">
+        <summary>「別の切り口でもう1本」が押せません。</summary>
+        <div class="ans"><p>AIがつくれる立論は、1つの論題につき各側3本までです。すでに3本ある場合は押せません。また、論題の分析を確認中のときも押せません。</p></div>
+      </details>
+      <details class="faq">
+        <summary>論題を変えたいのに、変えられません。</summary>
+        <div class="ans"><p>立論づくりの最中は変えられません。ホーム画面の進み具合がすべて終わってから、もう一度お試しください。</p></div>
+      </details>
+      <details class="faq">
+        <summary>間違えて直してしまった／消してしまった。元に戻せますか？</summary>
+        <div class="ans"><p>本文を直したり、登録した立論を削除したりしたものは、画面から元には戻せません。大事な立論は、Wordで出力して手元にも残しておくと安心です。</p>
+        <p class="aside" style="margin:0">※ 残念ながら、ディベートにも人生にも <code>Ctrl+Z</code> はありません。<code>git revert</code> もありません。</p></div>
+      </details>
+
+      <div class="cta">
+        <div class="eyebrow">Let's Get Started</div>
+        <p>準備ができたら、さっそく使ってみましょう。<br>いい試合になりますように。</p>
+        <a class="btn" href="https://debate-app-zemi.fly.dev/">アプリを開く</a>
+      </div>
+    </section>
+  </article>
+</div>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>
+      <div class="title">ディベート支援アプリ 使い方ガイド</div>
+      <div>ゼミ内での利用を目的としたガイドです。</div>
+    </div>
+    <div class="tiny">
+      For the curious: <a href="https://github.com/Isogyu">github.com/Isogyu</a><br>
+      Built with too much coffee and <span title="本番環境でのテストは、試合の本番だけにしてください">zero tests in production</span>.
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
