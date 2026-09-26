@@ -27,6 +27,8 @@ import { VerifyToggle } from "@/components/verify-toggle";
 import { FlowchartView, type FlowNode } from "@/components/flowchart/flowchart-view";
 import { SIDE_LABELS } from "@/domain/types";
 import { requireSession } from "@/lib/session";
+import { loadVariantHistory, type VariantHistory } from "@/lib/history";
+import { formatJstDateTime } from "@/domain/jst";
 import { toJobView } from "../../theme-view";
 import { BodyTab } from "./body-tab";
 import { ClosingTab, FindingsPanel, QuestionsTab, SourcesTab, StrategyTab } from "./tabs";
@@ -72,6 +74,8 @@ export default async function CasePage({
     .limit(1);
   const [upload] = await db.select().from(uploads).where(eq(uploads.variantId, caseId));
   const building = variant.debateCase.sections.length === 0;
+  const history = await loadVariantHistory(variant);
+  const lastChange = history.entries.find((e) => e.detail !== "確認済にした" && e.detail !== "未確認に戻した");
 
   const base = `/projects/${projectId}/cases/${caseId}`;
   const title = building ? (variant.origin === "generated" ? "生成中の立論" : "取り込み中の立論") : variant.label;
@@ -110,6 +114,8 @@ export default async function CasePage({
         {variant.origin === "generated" && variant.approach && `${variant.framework}／${variant.approach}` !== title && (
           <p className="-mt-2 mb-4 text-sm text-[var(--muted)]">切り口: {variant.framework}／{variant.approach}</p>
         )}
+
+        <HistoryPanel history={history} lastChange={lastChange} />
 
         {job && (job.status !== "done" || job.steps.some((s) => s.status === "failed")) && (
           <div className="mb-5">
@@ -161,6 +167,7 @@ export default async function CasePage({
               projectId={projectId}
               archived={archived}
               variant={variant}
+              verifiedBy={history.verifiedBy}
             />
           </>
         )}
@@ -176,7 +183,9 @@ async function TabContent({
   projectId,
   archived,
   variant,
+  verifiedBy,
 }: {
+  verifiedBy: VariantHistory["verifiedBy"];
   tab: Tab;
   view: "paragraph" | "selected";
   base: string;
@@ -197,7 +206,7 @@ async function TabContent({
       <>
         {aiGenerated && !archived && (
           <div className="mb-4">
-            <VerifyToggle target="case" id={variant.id} projectId={projectId} variantId={variant.id} verified={variant.verified} />
+            <VerifyToggle target="case" id={variant.id} projectId={projectId} variantId={variant.id} verified={variant.verified} by={verifiedBy["case"]} />
           </div>
         )}
         <FindingsPanel findings={findings} />
@@ -248,6 +257,7 @@ async function TabContent({
         materials={new Map(materials.map((m) => [m.id, m]))}
         archived={archived}
         copyTargets={copyTargets}
+        verifiedBy={verifiedBy}
       />
       </>
     );
@@ -257,7 +267,7 @@ async function TabContent({
     const nodes = await db.select().from(crossExamNodes).where(eq(crossExamNodes.targetVariantId, variant.id));
     const toggle = !archived && (
       <div className="mb-4">
-        <VerifyToggle target="questions" id={variant.id} projectId={projectId} variantId={variant.id} verified={variant.questionsVerified} />
+        <VerifyToggle target="questions" id={variant.id} projectId={projectId} variantId={variant.id} verified={variant.questionsVerified} by={verifiedBy["questions"]} />
       </div>
     );
     if (nodes.length === 0) {
@@ -318,7 +328,7 @@ async function TabContent({
       <>
         {closing && !archived && (
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <VerifyToggle target="closing" id={variant.id} projectId={projectId} variantId={variant.id} verified={closing.verified} />
+            <VerifyToggle target="closing" id={variant.id} projectId={projectId} variantId={variant.id} verified={closing.verified} by={verifiedBy["closing"]} />
             <Link href={`/projects/${projectId}/print/closing?variant=${variant.id}`} className="text-sm underline">
               印刷用（手書きで埋める）
             </Link>
@@ -334,10 +344,54 @@ async function TabContent({
     <>
       {strategy && !archived && (
         <div className="mb-4">
-          <VerifyToggle target="strategy" id={variant.id} projectId={projectId} variantId={variant.id} verified={strategy.verified} />
+          <VerifyToggle target="strategy" id={variant.id} projectId={projectId} variantId={variant.id} verified={strategy.verified} by={verifiedBy["strategy"]} />
         </div>
       )}
       <StrategyTab strategy={strategy} />
     </>
+  );
+}
+
+/** 誰が作り、誰が直したか（ログインの名前で記録している） */
+function HistoryPanel({
+  history,
+  lastChange,
+}: {
+  history: VariantHistory;
+  lastChange: VariantHistory["entries"][number] | undefined;
+}) {
+  if (history.entries.length === 0 && !history.createdBy) return null;
+  return (
+    <details className="mb-5 rounded border border-[var(--line)] px-3 py-2 text-sm">
+      <summary className="cursor-pointer text-[var(--muted)]">
+        {history.createdBy && (
+          <>
+            作成：<b className="text-[var(--foreground)]">{history.createdBy.who}</b>（{formatJstDateTime(history.createdBy.at)}）
+          </>
+        )}
+        {history.createdBy && lastChange && "　"}
+        {lastChange && (
+          <>
+            最終更新：<b className="text-[var(--foreground)]">{lastChange.who}</b>（{formatJstDateTime(lastChange.at)}）
+          </>
+        )}
+        <span className="ml-2 underline">変更の記録を見る</span>
+      </summary>
+      <ul className="mt-2 space-y-1">
+        {history.entries.map((e, i) => (
+          <li key={i} className="flex flex-wrap gap-x-2">
+            <span className="text-[var(--muted)]">{formatJstDateTime(e.at)}</span>
+            <b>{e.who}</b>
+            <span>
+              {e.what && e.what !== "立論" ? `${e.what}：` : ""}
+              {e.detail}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-[var(--muted)]">
+        最近の{history.entries.length}件です。名前はログインのときに入れたものです（自己申告）。
+      </p>
+    </details>
   );
 }

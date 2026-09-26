@@ -1,7 +1,8 @@
 /**
  * 印刷画面（v6 要件 F12）。ブラウザの「印刷 → PDFに保存」で PDF になる
  *
- * ?variant={立論} で立論1本分を出す。種類: 立論／参考資料／質疑フローチャート／最終弁論の雛形。
+ * ?variant={立論} で立論1本分を出す。種類: 質疑フローチャート／最終弁論の雛形。
+ * 立論と参考資料は Word（実物と同じ書式）で出力するため、印刷画面は持たない。
  * AIが作ったもので未確認のものは、紙面にも必ず表示する（§1 制約5）。
  */
 
@@ -9,24 +10,22 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FlowchartPrint } from "@/components/flowchart/flowchart-print";
 import type { Perspective } from "@/components/flowchart/flowchart-view";
-import { formatNumber } from "@/domain/statistics";
-import type { ClosingPerspective, StatisticData } from "@/domain/types";
-import { statisticChartSvg } from "@/lib/export/chart-svg";
+import type { ClosingPerspective } from "@/domain/types";
 import {
   buildExportData,
-  EXPORT_KIND_LABELS,
   type AiLabel,
   type ExportData,
   type ExportKind,
-  type ExportSource,
 } from "@/lib/export/data";
 import { requireSession } from "@/lib/session";
 import { PrintButton } from "./print-button";
 
 export const dynamic = "force-dynamic";
 
-function isKind(kind: string): kind is ExportKind {
-  return kind in EXPORT_KIND_LABELS;
+/** 印刷できるのは、質疑フローチャートと最終弁論の雛形だけ（立論・参考資料は Word で出力する） */
+type PrintKind = Extract<ExportKind, "flowchart" | "closing">;
+function isKind(kind: string): kind is PrintKind {
+  return kind === "flowchart" || kind === "closing";
 }
 
 export default async function PrintPage({
@@ -87,8 +86,6 @@ export default async function PrintPage({
         </div>
       </div>
 
-      {kind === "case" && <CaseSheet data={data} />}
-      {kind === "sources" && <SourcesSheet data={data} />}
       {kind === "flowchart" && <FlowchartSheet data={data} perspective={view} />}
       {kind === "closing" && <ClosingSheet data={data} />}
     </main>
@@ -123,261 +120,6 @@ function SheetHeader({ data, kind, label }: { data: ExportData; kind: string; la
         立論：{data.label}（{data.originLabel}）
       </p>
     </header>
-  );
-}
-
-function Notice({ children }: { children: React.ReactNode }) {
-  return <p className="print-block my-3 border-2 border-black p-2 text-sm font-bold">{children}</p>;
-}
-
-// ── 立論 ─────────────────────────────────────────────────
-function CaseSheet({ data }: { data: ExportData }) {
-  const c = data.debateCase;
-  return (
-    <article>
-      <SheetHeader data={data} kind="立論" label={data.caseAiLabel} />
-      {data.caseAiLabel?.needsCheck && (
-        <Notice>
-          【AI生成（未確認）】この立論はAIが作成し、まだ人が確認していません。資料の中身と照らして確認してから使ってください。
-        </Notice>
-      )}
-
-      {c.sections.length === 0 ? (
-        // 構造化できなかった登録立論は原文のまま（書き換えない）
-        <div className="whitespace-pre-wrap">{c.fullText}</div>
-      ) : (
-        <>
-          <h2 className="mt-5 mb-2 font-bold">Ⅰ. 主張</h2>
-          <p className="pl-4">{c.claim}</p>
-
-          <h2 className="mt-5 mb-2 font-bold">Ⅱ. 理由</h2>
-          {c.sections.map((section, i) => (
-            <section key={section.id} className="mb-4">
-              <h3 className="mb-1 font-bold">
-                {i + 1}. {section.title}
-              </h3>
-              {section.subsections.map((sub, j) => (
-                <div key={sub.id} className="mb-3 pl-4">
-                  {(section.subsections.length > 1 || sub.title !== section.title) && (
-                    <p className="font-bold">
-                      （{j + 1}）{sub.title}
-                    </p>
-                  )}
-                  <p className="pl-4">{sub.claim}</p>
-                  {sub.warrant && <p className="pl-4">{sub.warrant}</p>}
-                  {sub.impact && <p className="pl-4">{sub.impact}</p>}
-                </div>
-              ))}
-            </section>
-          ))}
-
-          <h2 className="mt-5 mb-2 font-bold">Ⅲ. 結論</h2>
-          <p className="pl-4">{c.conclusion}</p>
-        </>
-      )}
-
-      <p className="mt-6 text-right text-xs">
-        読み上げ時間の目安：{data.speech.label}（{data.speech.chars}字）
-      </p>
-    </article>
-  );
-}
-
-// ── 参考資料 ─────────────────────────────────────────────
-function SourcesSheet({ data }: { data: ExportData }) {
-  const needs = data.sources.filter((s) => s.aiLabel?.needsCheck);
-  return (
-    <article>
-      <SheetHeader data={data} kind="参考資料" />
-      {needs.length > 0 && (
-        <Notice>
-          【要確認】資料{needs.map((s) => s.number).join("・")}
-          は、未確認または未完成です。見出し横の表示を確認し、出典の実物と照らしてから使ってください。
-        </Notice>
-      )}
-      {data.sources.length === 0 && <p>（資料がありません）</p>}
-      {data.sources.map((s) => (
-        <SourceEntry key={s.number} s={s} />
-      ))}
-    </article>
-  );
-}
-
-function SourceEntry({ s }: { s: ExportSource }) {
-  return (
-    <section className="mt-6">
-      <h2 className="font-bold">
-        【資料{s.number}】
-        <AiMark label={s.aiLabel} />
-      </h2>
-      {s.status === "procedure" ? (
-        <ProcedureEntry s={s} />
-      ) : (
-        <>
-          <p className="font-bold">{s.provesWhat}</p>
-          {s.citation && <p>{s.citation}</p>}
-          {s.url && <p className="break-all text-sm">{s.url}</p>}
-          {s.lastCheckedLabel && <p>（最終確認日：{s.lastCheckedLabel}）</p>}
-          {s.quote && (
-            <p className="mt-2 whitespace-pre-wrap">
-              「{s.quote}」{s.modificationNote ?? ""}
-            </p>
-          )}
-          {s.statistic && <StatisticEntry stat={s.statistic} />}
-          {!s.withinAllowedSources && (
-            <p className="mt-1 text-sm">
-              ※新聞・民間調査などの資料です。信頼性を突かれやすい点に注意してください。
-            </p>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
-function ProcedureEntry({ s }: { s: ExportSource }) {
-  const p = s.procedure;
-  return (
-    <div className="print-block border-2 border-dashed border-black p-3">
-      <p className="mb-2 font-bold">この資料は未完成です（作成手順）</p>
-      <dl className="text-sm [&_dd]:mb-2 [&_dd]:pl-4 [&_dt]:font-bold">
-        <dt>何を証明する資料か</dt>
-        <dd>{p?.provesWhat || s.provesWhat}</dd>
-        {p?.reason && (
-          <>
-            <dt>自動で完成できなかった理由</dt>
-            <dd>{p.reason}</dd>
-          </>
-        )}
-        {p && p.searchKeywords.length > 0 && (
-          <>
-            <dt>検索に使う言葉</dt>
-            <dd>{p.searchKeywords.join("　／　")}</dd>
-          </>
-        )}
-        {p && p.whereToLook.length > 0 && (
-          <>
-            <dt>探す場所</dt>
-            <dd>
-              <ul>
-                {p.whereToLook.map((w, i) => (
-                  <li key={i} className="break-all">
-                    ・{w.label}　{w.url}
-                  </li>
-                ))}
-              </ul>
-            </dd>
-          </>
-        )}
-        {p?.whatToExtract && (
-          <>
-            <dt>見つけたら抜き出すもの</dt>
-            <dd>{p.whatToExtract}</dd>
-          </>
-        )}
-        {p?.statisticSteps && p.statisticSteps.length > 0 && (
-          <>
-            <dt>統計の作り方</dt>
-            <dd>
-              <ol className="list-decimal pl-5">
-                {p.statisticSteps.map((step, i) => (
-                  <li key={i}>{step}</li>
-                ))}
-              </ol>
-            </dd>
-          </>
-        )}
-      </dl>
-    </div>
-  );
-}
-
-function StatisticEntry({ stat }: { stat: StatisticData }) {
-  const cellCls = "border border-black px-2 py-1 text-left align-top";
-  return (
-    <div className="mt-3 text-sm">
-      {stat.table.columns.length > 0 && (
-        <table className="print-block mb-3 w-full border-collapse">
-          <thead>
-            <tr>
-              {stat.table.columns.map((c, i) => (
-                <th key={i} className={`${cellCls} bg-gray-100`}>
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {stat.table.rows.map((r, i) => (
-              <tr key={i}>
-                {stat.table.columns.map((_, j) => (
-                  <td key={j} className={cellCls}>
-                    {r[j] ?? ""}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {stat.chart && stat.chart.points.length > 0 && (
-        <div
-          className="print-block mx-auto mb-3 max-w-[140mm] [&_svg]:h-auto [&_svg]:w-full"
-          role="img"
-          aria-label={stat.chart.title}
-          // 自前の純粋関数が文字を全てエスケープして組み立てた SVG
-          dangerouslySetInnerHTML={{ __html: statisticChartSvg(stat.chart) }}
-        />
-      )}
-      {stat.inputs.length > 0 && (
-        <div className="print-block mb-2">
-          <p className="font-bold">元の数値と出典</p>
-          <ul className="pl-4">
-            {stat.inputs.map((i) => (
-              <li key={i.key} className="break-all">
-                ・{i.label}：{formatNumber(i.value, i.unit)}（{i.statName}「{i.tableTitle}」{i.year}
-                {i.tableId ? `、表番号 ${i.tableId}` : ""}）{i.url ? `　${i.url}` : ""}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {stat.results.length > 0 && (
-        <div className="print-block mb-2">
-          <p className="font-bold">計算過程</p>
-          <ul className="pl-4">
-            {stat.results.map((r) => (
-              <li key={r.key}>
-                ・{r.label}：{r.expression}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {stat.comparability.length > 0 && (
-        <table className="print-block w-full border-collapse">
-          <caption className="text-left font-bold">比較の前提の検査</caption>
-          <thead>
-            <tr>
-              <th className={`${cellCls} bg-gray-100`}>観点</th>
-              <th className={`${cellCls} bg-gray-100`}>判定</th>
-              <th className={`${cellCls} bg-gray-100`}>内容</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stat.comparability.map((c, i) => (
-              <tr key={i}>
-                <td className={cellCls}>{c.aspect}</td>
-                <td className={`${cellCls} font-bold`}>
-                  {c.ok === true ? "○" : c.ok === false ? "NG" : "要確認"}
-                </td>
-                <td className={cellCls}>{c.note}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
   );
 }
 
