@@ -33,7 +33,7 @@ import {
   pickSpeechSchema,
   pickStatTableSchema,
 } from "@/domain/schemas";
-import { getLlmProvider } from "@/lib/llm/anthropic";
+import { getLlmProvider, LIGHT_MODEL } from "@/lib/llm/anthropic";
 import * as PS from "@/lib/llm/prompts-sources";
 import { SYSTEM_BASE } from "@/lib/llm/prompts";
 import type { UsageMeter } from "@/lib/jobs/common";
@@ -122,6 +122,7 @@ async function quoteFrom(
             ? "\n\n※前回の抜き出しは本文と一致しませんでした。本文の文字をそのまま写してください。"
             : ""),
         schema: pickQuoteSchema,
+        model: LIGHT_MODEL,
         maxTokens: 2000,
       }),
     );
@@ -180,6 +181,7 @@ async function acquireDiet(
       system: SYSTEM_BASE,
       prompt: PS.pickSpeechPrompt(input.provesWhat, input.ref.plan?.whatToExtract ?? "", listed),
       schema: pickSpeechSchema,
+      model: LIGHT_MODEL,
       maxTokens: 2000,
     }),
   );
@@ -241,6 +243,7 @@ async function acquireStatistic(
       system: SYSTEM_BASE,
       prompt: PS.pickStatTablePrompt(input.provesWhat, plan?.statisticSteps ?? [], tables),
       schema: pickStatTableSchema,
+      model: LIGHT_MODEL,
       maxTokens: 1000,
     }),
   );

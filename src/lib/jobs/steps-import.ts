@@ -23,7 +23,7 @@ import { renderFullText, matchRefMarkers } from "@/domain/case-format";
 import { hostOf, isWithinAllowedSources } from "@/domain/source-whitelist";
 import type { SourceRequirement, SourceType } from "@/domain/types";
 import { importStructureSchema } from "@/domain/schemas";
-import { getLlmProvider } from "@/lib/llm/anthropic";
+import { getLlmProvider, LIGHT_MODEL } from "@/lib/llm/anthropic";
 import * as P from "@/lib/llm/prompts";
 import { newId } from "@/lib/ids";
 import { loadVariant, UsageMeter, type StepContext } from "./common";
@@ -53,6 +53,7 @@ export async function stepImport(ctx: StepContext) {
         "あなたはディベート原稿の構造を読み取る補助です。本文を書き換えず、行番号だけを答えます。",
       prompt: P.importStructurePrompt(numberedLines(upload.caseText)),
       schema: importStructureSchema,
+      model: LIGHT_MODEL,
       maxTokens: 4000,
     }),
   );
