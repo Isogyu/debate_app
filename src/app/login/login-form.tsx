@@ -23,7 +23,7 @@ export function LoginForm({ next }: { next: string }) {
       )}
 
       <label className="block">
-        <span className="mb-1 block font-bold">合言葉</span>
+        <span className="mb-1 block font-bold">パスワード</span>
         <input
           name="password"
           type="password"
@@ -33,7 +33,7 @@ export function LoginForm({ next }: { next: string }) {
           className="w-full rounded border border-[var(--line)] p-3 text-base"
         />
         <span className="mt-1 block text-sm text-[var(--muted)]">
-          ゼミで共有している合言葉です。
+          パスワードを入力してください。
         </span>
       </label>
 
