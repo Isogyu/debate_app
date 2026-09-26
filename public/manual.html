@@ -207,8 +207,15 @@
   .site-footer .title { color: #fff; font-weight: 700; font-size: 15px; }
   .site-footer .tiny { font-size: 11px; color: #8fa6c4; }
   .site-footer .tiny a { color: #8fa6c4; }
-  .site-footer .tiny a.ver { color: rgba(255,255,255,.16); text-decoration: none; font-family: ui-monospace, Menlo, monospace; font-size: 10px; }
-  .site-footer .tiny a.ver:hover { color: rgba(255,255,255,.5); }
+  .site-footer .tiny a.ver { color: #c9d6e8; text-decoration: none; font-family: ui-monospace, Menlo, monospace; font-size: 11px; border: 1px solid rgba(255,255,255,.3); border-radius: 4px; padding: 1px 6px; }
+  .site-footer .tiny a.ver:hover { background: rgba(255,255,255,.12); }
+  .egg-door { position: fixed; right: 18px; bottom: 18px; z-index: 50; display: inline-flex; align-items: center; gap: 8px; background: #0b1220; color: #7fd1a8; font: 700 13px/1 ui-monospace, Menlo, Consolas, monospace; padding: 11px 14px; border-radius: 999px; text-decoration: none; box-shadow: 0 6px 18px rgba(11,42,91,.28); border: 1px solid #22324a; }
+  .egg-door:hover { transform: translateY(-2px); }
+  .egg-door .cur { display: inline-block; width: 8px; height: 14px; background: #7fd1a8; animation: egg-blink 1s steps(1) infinite; }
+  .egg-door .lbl { color: #cfe3d4; font-weight: 500; }
+  @keyframes egg-blink { 50% { opacity: 0; } }
+  @media (max-width: 560px) { .egg-door .lbl { display: none; } .egg-door { right: 12px; bottom: 12px; } }
+  @media print { .egg-door { display: none; } }
 
   @media (max-width: 900px) {
     .layout { grid-template-columns: 1fr; gap: 24px; padding-top: 28px; }
@@ -736,10 +743,12 @@ f0a1b2c とりあえず寝る
       For the curious: <a href="https://github.com/Isogyu">github.com/Isogyu</a><br>
       Built with too much coffee and <span title="本番環境でのテストは、試合の本番だけにしてください">zero tests in production</span>.<br>
       <span title="判例ディベート版の開発者を除く">No debaters were harmed in the making of this app.</span><br>
-      <a class="ver" href="/egg/403.html" tabindex="-1">v6.0.0</a>
+      <a class="ver" href="/egg/403.html">v6.0.0</a>
     </div>
   </div>
 </footer>
+
+<a class="egg-door" href="/egg/403.html" title="関係者以外立入禁止" aria-label="関係者以外立入禁止">&gt;_<span class="lbl">関係者以外立入禁止</span><span class="cur"></span></a>
 
 </body>
 </html>
