@@ -1,0 +1,13 @@
+# イメージのビルドに手元のものを持ち込まない。
+# 特に node_modules は OS（macOS）ごとのネイティブ部品と、手元で入れた古いライブラリを含むため、
+# これがあると Dockerfile の中で入れた node_modules が上書きされ、ビルドが失敗する
+node_modules
+.next
+data
+.git
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
