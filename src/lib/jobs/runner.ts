@@ -20,6 +20,7 @@ import {
   GEN_STEP_LABELS,
   IMPORT_STEPS,
   MORE_QUESTION_STEPS,
+  RECHECK_STEPS,
 } from "@/domain/types";
 import type {
   GenStep,
@@ -42,6 +43,7 @@ export const STEPS_BY_KIND: Record<JobKind, GenStep[]> = {
   generate: GENERATE_STEPS,
   import: IMPORT_STEPS,
   more_questions: MORE_QUESTION_STEPS,
+  recheck: RECHECK_STEPS,
 };
 
 export interface NewJob {
@@ -292,12 +294,10 @@ async function attemptStep(
         return { step, status: "failed", attempts, error: err.message };
       }
       if (err instanceof LlmTruncatedError) {
-        return {
-          step,
-          status: "failed",
-          attempts,
-          error: `${GEN_STEP_LABELS[step]}の生成が途中で切れました。管理者に連絡してください（出力上限の引き上げが必要です）。`,
-        };
+        // AIの出力の長さは毎回ぶれるので、1回はそのままやり直す
+        console.error(`[generate] ${step} の出力が上限で切れました (${attempts}回目)`);
+        lastError = `${GEN_STEP_LABELS[step]}の生成で、AIの回答が長すぎて途中で切れました。`;
+        continue;
       }
       console.error(
         `[generate] ${step} が失敗しました (${attempts}回目):`,

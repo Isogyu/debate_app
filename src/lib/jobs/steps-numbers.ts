@@ -203,7 +203,7 @@ export async function stepNumberCheck(ctx: StepContext) {
                   unsourced.map((u) => `「${u.mention.text}」— ${u.mention.sentence}`),
                 ),
                 schema: paragraphTextSchema,
-                maxTokens: 3000,
+                maxTokens: 6000,
               }),
             );
             const after = extractNumbers([r.claim, r.warrant, r.impact].join("\n"), location, c.id);
@@ -366,7 +366,7 @@ export async function stepNumberCheck(ctx: StepContext) {
             })),
           ),
           schema: numberUsageSchema,
-          maxTokens: 3000,
+          maxTokens: 6000,
         }),
       );
       for (const f of usage.findings) {

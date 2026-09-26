@@ -28,7 +28,7 @@ export const LIGHT_MODEL =
   process.env.DEBATE_MODEL_LIGHT ?? "claude-haiku-4-5-20251001";
 
 /** 出力の既定上限。切れると必ずJSONが壊れるので余裕を持たせる */
-export const DEFAULT_MAX_TOKENS = 12000;
+export const DEFAULT_MAX_TOKENS = 16000;
 
 /**
  * APIの失敗を、ゼミ生が読んで意味の分かる日本語にする。
@@ -122,6 +122,38 @@ function getClient(): Anthropic {
   return client;
 }
 
+/**
+ * 思考（extended / adaptive thinking）を切るか。
+ * 構造化出力（JSON）に思考は要らず、思考の分も出力上限を食うため、途中で切れる原因になる。
+ * モデルが「思考を切る」指定を受け付けない場合は、次からは指定せずに送る。
+ */
+let thinkingDisableSupported = process.env.DEBATE_THINKING !== "on";
+
+type CreateParams = Omit<Anthropic.MessageCreateParamsNonStreaming, "stream">;
+
+/**
+ * 1回分の問い合わせ。ストリーミングで受ける。
+ * ストリーミングでない呼び出しは、出力上限が大きいと SDK が「10分を超えうる」として断るため。
+ */
+async function createMessage(params: CreateParams): Promise<Anthropic.Message> {
+  const send = (p: CreateParams) => getClient().messages.stream(p).finalMessage();
+  if (!thinkingDisableSupported) return send(params);
+  try {
+    return await send({ ...params, thinking: { type: "disabled" } });
+  } catch (err) {
+    if (
+      err instanceof Anthropic.APIError &&
+      err.status === 400 &&
+      /thinking/i.test(apiErrorDetail(err))
+    ) {
+      console.warn("[llm] このモデルは思考の無効化を受け付けないため、指定せずに送り直します");
+      thinkingDisableSupported = false;
+      return send(params);
+    }
+    throw err;
+  }
+}
+
 /** ```json フェンスやモデルの前置きが混ざっても拾えるようにする */
 function extractJson(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -137,13 +169,13 @@ export class AnthropicProvider implements LlmProvider {
 
   async generateStructured<T>(req: StructuredRequest<T>): Promise<LlmResult<T>> {
     const model = req.model ?? DEFAULT_MODEL;
+    const maxTokens = req.maxTokens ?? DEFAULT_MAX_TOKENS;
 
     let response: Anthropic.Message;
     try {
-      response = await getClient().messages.create({
+      response = await createMessage({
         model,
-        // 日本語の構造化出力は嵩む。8000だと反駁・質疑が途中で切れた
-        max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+        max_tokens: maxTokens,
         system: `${req.system}\n\n出力は説明文を付けず、JSONオブジェクトのみを返してください。`,
         messages: [{ role: "user", content: req.prompt }],
       });
@@ -168,7 +200,7 @@ export class AnthropicProvider implements LlmProvider {
     // 「読み取れませんでした」で片付けると原因に辿り着けないので先に判定する
     if (response.stop_reason === "max_tokens") {
       throw new LlmTruncatedError(
-        `AIの回答が長すぎて途中で切れました（出力上限 ${req.maxTokens ?? DEFAULT_MAX_TOKENS} トークン）。`,
+        `AIの回答が長すぎて途中で切れました（出力上限 ${maxTokens} トークン）。`,
         response.usage.output_tokens,
       );
     }

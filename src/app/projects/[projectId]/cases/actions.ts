@@ -39,6 +39,7 @@ import {
   assertEditableMaterial,
   assertEditableVariant,
   copyMaterialToCase,
+  importMaterialsToCase,
   RuleError,
   startGeneration,
   startImport,
@@ -182,6 +183,46 @@ export async function uploadCase(
   }
   revalidateTheme(projectId);
   redirect(`/projects/${projectId}/cases/${variantId}`);
+}
+
+// ── 資料だけの登録（カテゴリ「資料」） ─────────────────
+export async function uploadMaterials(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const userId = await requireSession();
+  const projectId = String(formData.get("projectId") ?? "");
+  const variantId = String(formData.get("variantId") ?? "");
+  const file = formData.get("materialsFile");
+  if (!variantId) return { error: "資料を付ける立論を選んでください。" };
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "資料のファイルを選んでください。" };
+  }
+  let result;
+  try {
+    await assertEditableVariant(variantId, { projectId });
+    const saved = await saveUploadFile(projectId, file);
+    result = await importMaterialsToCase({
+      variantId,
+      projectId,
+      fileName: file.name,
+      text: saved.text,
+      userId,
+    });
+    await log(userId, "upload", variantId, projectId, `資料を登録: ${file.name}`);
+  } catch (err) {
+    return { error: userMessage(err, "資料を登録できませんでした。") };
+  }
+  revalidateTheme(projectId, variantId);
+  const parts = [
+    result.added.length ? `【資料${result.added.join("】【資料")}】を追加しました` : "",
+    result.replaced.length ? `【資料${result.replaced.join("】【資料")}】を置き換えました` : "",
+  ].filter(Boolean);
+  redirect(
+    `/projects/${projectId}/cases/${variantId}?tab=sources&notice=${encodeURIComponent(
+      `${parts.join("。")}。数字の検査をやり直しています。`,
+    )}`,
+  );
 }
 
 // ── 質疑の追加（この箇所をもっと） ───────────────────────

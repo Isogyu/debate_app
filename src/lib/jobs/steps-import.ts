@@ -58,7 +58,7 @@ export async function stepImport(ctx: StepContext) {
       prompt: P.importStructurePrompt(numberedLines(upload.caseText)),
       schema: importStructureSchema,
       model: LIGHT_MODEL,
-      maxTokens: 4000,
+      maxTokens: 8000,
     }),
   );
   // 本文が欠ける・重なる区切りは採用しない。ImportStructureError になり、ランナーが1回だけやり直す

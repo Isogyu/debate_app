@@ -187,6 +187,12 @@ export async function ThemeView({ projectId }: { projectId: string }) {
                     >
                       自作の立論を登録
                     </Link>
+                    <Link
+                      href={`/projects/${projectId}/upload?side=${side}&category=materials`}
+                      className="inline-flex min-h-11 items-center rounded border border-[var(--line)] px-4 text-sm hover:border-[var(--accent)]"
+                    >
+                      自作の資料を登録
+                    </Link>
                   </div>
                 )}
               </section>

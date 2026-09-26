@@ -182,7 +182,7 @@ export async function startPractice(
         system: systemFor(ctx, mode, keys.chains),
         prompt: PP.simulatorOpeningPrompt(),
         schema: simulatorReplySchema,
-        maxTokens: 1000,
+        maxTokens: 2000,
       });
       await recordUsage(projectId, usage);
       const nodeId = data.usedKey ? keysToIds([data.usedKey], keys.nodeIdByKey)[0] : undefined;
@@ -256,7 +256,7 @@ export async function sendTurn(
         text,
       ),
       schema: simulatorReplySchema,
-      maxTokens: 1000,
+      maxTokens: 2000,
     });
     await recordUsage(session.projectId, usage);
 
@@ -428,7 +428,7 @@ export async function finishPractice(
         closingFrame: await closingFrameFor(session),
       }),
       schema: simulatorFeedbackSchema,
-      maxTokens: 5000,
+      maxTokens: 10000,
     });
     await recordUsage(session.projectId, usage);
 

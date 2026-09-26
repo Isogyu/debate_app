@@ -56,7 +56,7 @@ export async function stepSourcePlan(ctx: StepContext) {
       system: SYSTEM_BASE,
       prompt: PS.sourcePlanPrompt(project.resolution, variant.debateCase.fullText, slotsJson, categories),
       schema: sourcePlanSchema,
-      maxTokens: 8000,
+      maxTokens: 12000,
     }),
   );
 

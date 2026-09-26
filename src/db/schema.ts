@@ -300,7 +300,7 @@ export const generationJobs = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     kind: text("kind", {
-      enum: ["analysis", "generate", "import", "more_questions"],
+      enum: ["analysis", "generate", "import", "more_questions", "recheck"],
     }).notNull(),
     variantId: text("variant_id"),
     params: text("params", { mode: "json" }).$type<JobParams>(),

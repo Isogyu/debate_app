@@ -280,7 +280,7 @@ export const crossExamChainsSchema = z.object({
   ),
 });
 
-const closingPerspectiveSchema = z.object({
+export const closingPerspectiveSchema = z.object({
   frame: z.string().min(1),
   blanks: z.array(
     z.object({ key: z.string().min(1), label: z.string().min(1), hint: z.string().default("") }),

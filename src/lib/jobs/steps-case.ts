@@ -222,7 +222,7 @@ export async function stepCaseBody(ctx: StepContext) {
         variant.side,
       ),
       schema: caseBodyOutputSchema,
-      maxTokens: 12000,
+      maxTokens: 16000,
     }),
   );
 
@@ -355,7 +355,7 @@ export async function adjustLength(
             status === "over" ? "shorten" : "lengthen",
           ),
           schema: lengthAdjustSchema,
-          maxTokens: 10000,
+          maxTokens: 16000,
         }),
       );
     } catch (err) {

@@ -86,9 +86,8 @@ function fake(req: StructuredRequest<unknown>): unknown {
       ] },
       ...["evidence", "causality", "impact", "numbers"].map((ap) => ({ attackPoint: ap, goal: "g", priority: 3, categoryNames: [], nodes: [{ key: "k", question: `${ap}の質問`, purpose: "", modelAnswer: "答え", branches: [] }] })),
     ] };
-  if (s === S.closingSchema) {
-    const p = { frame: "質疑で相手は【①】を認めた。", blanks: [{ key: "①", label: "認めたこと", hint: "" }], examples: [{ pathLabel: "認めた場合", chainId: "bogus", text: "例文" }] };
-    return { own: p, opponent: p };
+  if (s === S.closingPerspectiveSchema) {
+    return { frame: "質疑で相手は【①】を認めた。", blanks: [{ key: "①", label: "認めたこと", hint: "" }], examples: [{ pathLabel: "認めた場合", chainId: "bogus", text: "例文" }] };
   }
   if (s === S.strategySchema) return { summary: "特徴", strengths: ["強み"], weaknesses: [{ point: "弱点", why: "理由" }], defend: ["守る"], neverConcede: ["譲らない"], winningPath: "勝ち筋", howToAttack: ["攻め筋"] };
   if (s === S.importStructureSchema) return guessStructure(req.prompt);
