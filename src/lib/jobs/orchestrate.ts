@@ -11,6 +11,7 @@ import { db } from "@/db";
 import {
   caseVariants,
   crossExamNodes,
+  generationJobs,
   projects,
   sourceMaterials,
   uploads,
@@ -544,6 +545,38 @@ export async function updateChainSelection(opts: {
         .where(and(eq(crossExamNodes.targetVariantId, opts.variantId), eq(crossExamNodes.chainId, chainId)))
         .run();
     }
+  });
+}
+
+// ── 登録した立論の削除 ─────────────────────────────────
+/**
+ * 登録（自作）の立論を削除する。読み取りに失敗した・間違えて登録した立論を片付けるため。
+ * 生成した立論は削除しない（生成の上限を回避できてしまうため。第5回確認）。
+ * 立論に付いた質疑・数字の検査・雛形・戦い方・練習記録は外部キーでまとめて消える。
+ * 資料の実体・生成ジョブ・アップロードの記録はここで消し、ファイルのパスを返す（呼び出し側で消す）。
+ */
+export async function deleteUploadedCase(opts: { variantId: string; projectId: string }) {
+  return db.transaction((tx) => {
+    const variant = assertEditableVariantTx(tx, opts.variantId, { projectId: opts.projectId });
+    if (variant.origin !== "uploaded") {
+      throw new RuleError("削除できるのは、自分で登録した立論だけです。");
+    }
+    const files = tx
+      .select({ a: uploads.caseFilePath, b: uploads.materialsFilePath })
+      .from(uploads)
+      .where(eq(uploads.variantId, variant.id))
+      .all()
+      .flatMap((r) => [r.a, r.b])
+      .filter((f): f is string => !!f);
+    tx.delete(uploads).where(eq(uploads.variantId, variant.id)).run();
+    tx.delete(generationJobs).where(eq(generationJobs.variantId, variant.id)).run();
+    tx.delete(caseVariants).where(eq(caseVariants.id, variant.id)).run();
+    for (const ref of variant.sourceRefs) {
+      tx.delete(sourceMaterials)
+        .where(and(eq(sourceMaterials.id, ref.materialId), eq(sourceMaterials.projectId, variant.projectId)))
+        .run();
+    }
+    return { files, label: variant.label };
   });
 }
 

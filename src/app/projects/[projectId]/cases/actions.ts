@@ -39,6 +39,7 @@ import {
   assertEditableMaterial,
   assertEditableVariant,
   copyMaterialToCase,
+  deleteUploadedCase,
   importMaterialsToCase,
   updateChainSelection,
   RuleError,
@@ -90,7 +91,7 @@ export async function generateCase(
     const variantId = await startGeneration(projectId, side, userId);
     await log(userId, "generate", variantId, projectId, "立論を生成");
     revalidateTheme(projectId);
-    return { ok: true, message: "生成を始めました。数分〜十数分かかります。画面を閉じても続きます。" };
+    return { ok: true, message: "生成を始めました。数分〜十数分かかります。画面を開いたままにすると止まらずに進みます（閉じると一時停止し、次に開いたときに再開します）。" };
   } catch (err) {
     return { error: userMessage(err, "生成を始められませんでした。") };
   }
@@ -599,4 +600,21 @@ export async function selectChain(_prev: ActionState, formData: FormData): Promi
   }
   revalidateTheme(projectId, variantId);
   return { ok: true };
+}
+
+// ── 登録した立論の削除 ─────────────────────────────────
+export async function deleteCase(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const userId = await requireSession();
+  const projectId = String(formData.get("projectId") ?? "");
+  const variantId = String(formData.get("variantId") ?? "");
+  try {
+    const { files, label } = await deleteUploadedCase({ projectId, variantId });
+    // 保存していた Word ファイルも消す（消せなくても削除自体は終わっている）
+    await Promise.all(files.map((f) => fs.unlink(f).catch(() => {})));
+    await log(userId, "edit", variantId, projectId, `登録した立論を削除: ${label}`);
+  } catch (err) {
+    return { error: userMessage(err, "削除できませんでした。") };
+  }
+  revalidateTheme(projectId);
+  redirect(`/projects/${projectId}`);
 }

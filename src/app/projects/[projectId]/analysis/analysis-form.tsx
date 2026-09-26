@@ -253,7 +253,7 @@ export function AnalysisForm({ data, readOnly = false }: { data: AnalysisFormDat
         </div>
       </div>
       <p className="text-right text-sm text-[var(--muted)]">
-        生成には数分かかります。開始したら画面を閉じても大丈夫です。
+        生成には数分〜十数分かかります。この画面を開いたままにすると止まらずに進みます。閉じると数分後にサーバーが休止して生成も一時停止し、次にアプリを開いたときに続きから再開します。
       </p>
       </>
       )}
