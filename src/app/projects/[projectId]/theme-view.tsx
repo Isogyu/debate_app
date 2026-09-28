@@ -31,7 +31,6 @@ import {
 import { progressOf } from "@/lib/jobs/runner";
 import { GENERATION_FULL_LABEL } from "@/lib/generation-quota";
 import { DeleteThemeButton, RestoreThemeButton } from "@/components/theme-controls";
-import { formatJstDate } from "@/domain/jst";
 
 export function toJobView(job: typeof generationJobs.$inferSelect): JobView {
   return {
@@ -290,7 +289,7 @@ export async function ThemeView({ projectId }: { projectId: string }) {
 export function PastThemes({
   themes,
 }: {
-  themes: { id: string; resolution: string; archivedAt: string | null }[];
+  themes: { id: string; resolution: string }[];
 }) {
   if (themes.length === 0) return null;
   return (
@@ -305,9 +304,6 @@ export function PastThemes({
             <Link href={`/projects/${t.id}`} className="underline underline-offset-2">
               {t.resolution}
             </Link>
-            {t.archivedAt && (
-              <span className="ml-2 text-xs text-[var(--muted)]">（{formatJstDate(t.archivedAt)}まで）</span>
-            )}
           </li>
         ))}
       </ul>
