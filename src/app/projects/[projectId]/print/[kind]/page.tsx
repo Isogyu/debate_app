@@ -9,7 +9,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FlowchartPrint } from "@/components/flowchart/flowchart-print";
-import type { Perspective } from "@/components/flowchart/flowchart-view";
 import type { ClosingPerspective } from "@/domain/types";
 import {
   buildExportData,
@@ -33,18 +32,17 @@ export default async function PrintPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string; kind: string }>;
-  searchParams: Promise<{ variant?: string; perspective?: string }>;
+  searchParams: Promise<{ variant?: string }>;
 }) {
   await requireSession();
   const { projectId, kind } = await params;
-  const { variant, perspective } = await searchParams;
+  const { variant } = await searchParams;
   if (!isKind(kind) || !variant) notFound();
 
   const data = await buildExportData(variant, { projectId });
   if (!data) notFound();
 
   const q = `?variant=${encodeURIComponent(variant)}`;
-  const view: Perspective = perspective === "defense" ? "defense" : "attack";
 
   return (
     <main className="print-sheet px-4 py-8">
@@ -53,24 +51,6 @@ export default async function PrintPage({
           この画面を印刷すると、そのままPDFとして保存できます。
           印刷画面の「送信先」で<b>「PDFに保存」</b>を選んでください。
         </p>
-        {kind === "flowchart" && (
-          <p className="mb-2 text-sm">
-            表示の向き：{" "}
-            <Link
-              href={`/projects/${projectId}/print/flowchart${q}&perspective=attack`}
-              className={view === "attack" ? "font-bold underline" : "underline"}
-            >
-              この立論と戦うチーム用（質問のねらい）
-            </Link>
-            {" ／ "}
-            <Link
-              href={`/projects/${projectId}/print/flowchart${q}&perspective=defense`}
-              className={view === "defense" ? "font-bold underline" : "underline"}
-            >
-              この立論で戦うチーム用（模範回答）
-            </Link>
-          </p>
-        )}
         {data.warnings.length > 0 && (
           <ul className="mb-3 list-disc rounded border-2 border-[var(--neg)] p-2 pl-6 text-sm">
             {data.warnings.map((w, i) => (
@@ -86,7 +66,7 @@ export default async function PrintPage({
         </div>
       </div>
 
-      {kind === "flowchart" && <FlowchartSheet data={data} perspective={view} />}
+      {kind === "flowchart" && <FlowchartSheet data={data} />}
       {kind === "closing" && <ClosingSheet data={data} />}
     </main>
   );
@@ -124,18 +104,16 @@ function SheetHeader({ data, kind, label }: { data: ExportData; kind: string; la
 }
 
 // ── 質疑フローチャート ───────────────────────────────────
-function FlowchartSheet({ data, perspective }: { data: ExportData; perspective: Perspective }) {
-  const who = perspective === "defense" ? "この立論で戦うチーム用" : "この立論と戦うチーム用";
+function FlowchartSheet({ data }: { data: ExportData }) {
   return (
     <>
       <p className="mb-2 text-sm">
-        {data.themeTitle}　{data.sideLabel}「{data.label}」（{data.originLabel}）／{who}
+        {data.themeTitle}　{data.sideLabel}「{data.label}」（{data.originLabel}）
         <AiMark label={data.questionsAiLabel} />
       </p>
       <FlowchartPrint
         nodes={data.questions}
         title={`質疑フローチャート（${data.sideLabel}「${data.label}」）`}
-        perspective={perspective}
       />
     </>
   );

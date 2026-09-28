@@ -30,7 +30,6 @@ import {
 import type { CaseVariant, DebateCase, Side } from "@/domain/types";
 import { renderFullText } from "@/domain/case-format";
 import { InvariantError, validateVariant } from "@/domain/invariants";
-import { claimRegenerationSchema } from "@/domain/schemas";
 import { hostOf, isWithinAllowedSources } from "@/domain/source-whitelist";
 import { newId, nowIso } from "@/lib/ids";
 import { JobBusyError, startRetry } from "@/lib/jobs/runner";
@@ -43,15 +42,11 @@ import {
   importMaterialsToCase,
   updateChainSelection,
   RuleError,
-  startGeneration,
   startImport,
   startMoreQuestions,
 } from "@/lib/jobs/orchestrate";
-import { loadMaterialsFor, stripUnsourcedNumbers } from "@/lib/jobs/steps-numbers";
 import { adjustLengthWarning } from "@/lib/jobs/length";
-import { getLlmProvider } from "@/lib/llm/anthropic";
-import { LlmConfigError, LlmSchemaError } from "@/lib/llm/provider";
-import { SYSTEM_BASE, regenerateClaimPrompt } from "@/lib/llm/prompts";
+import { LlmConfigError } from "@/lib/llm/provider";
 import { ExtractError, extractUploadText } from "@/lib/text-extract";
 import { detectSide } from "@/lib/side-detect";
 import { currentUserId, log, requireSession } from "@/lib/session";
@@ -76,25 +71,6 @@ function revalidateTheme(projectId: string, variantId?: string) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/");
   if (variantId) revalidatePath(`/projects/${projectId}/cases/${variantId}`);
-}
-
-// ── 生成 ───────────────────────────────────────────────
-export async function generateCase(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const userId = await requireSession();
-  const projectId = String(formData.get("projectId") ?? "");
-  const side = String(formData.get("side") ?? "") as Side;
-  if (side !== "affirmative" && side !== "negative") return { error: "側を選んでください。" };
-  try {
-    const variantId = await startGeneration(projectId, side, userId);
-    await log(userId, "generate", variantId, projectId, "立論を生成");
-    revalidateTheme(projectId);
-    return { ok: true, message: "生成を始めました。数分〜十数分かかります。画面を開いたままにすると止まらずに進みます（閉じると一時停止し、次に開いたときに再開します）。" };
-  } catch (err) {
-    return { error: userMessage(err, "生成を始められませんでした。") };
-  }
 }
 
 /** 失敗したステップからやり直す */
@@ -495,95 +471,6 @@ export async function saveClaim(_prev: ActionState, formData: FormData): Promise
   };
   await log(userId, "edit", claimId, variant.projectId, "立論の一部を編集");
   return persist(variant, debateCase);
-}
-
-/** 段落単位の再生成（生成立論のみ。自作の立論はAIに書き換えさせない） */
-export async function regenerateClaim(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const userId = await requireSession();
-  const variantId = String(formData.get("variantId") ?? "");
-  const claimId = String(formData.get("claimId") ?? "");
-  let variant;
-  try {
-    variant = await loadVariantRow(variantId);
-  } catch (err) {
-    return { error: userMessage(err, "再生成できませんでした。") };
-  }
-  if (variant.origin !== "generated") {
-    return { error: "登録した立論はAIで書き換えません。" };
-  }
-  const [project] = await db.select().from(projects).where(eq(projects.id, variant.projectId));
-  if (!project) return { error: "テーマが見つかりませんでした。" };
-
-  const section = variant.debateCase.sections.find((s) => s.subsections.some((c) => c.id === claimId));
-  const target = section?.subsections.find((c) => c.id === claimId);
-  if (!section || !target) return { error: "再生成する部分が見つかりませんでした。" };
-
-  const allowedNumbers = variant.sourceRefs
-    .filter((r) => target.sourceRefIds.includes(r.id))
-    .map((r) => r.number);
-
-  try {
-    const { data } = await getLlmProvider().generateStructured({
-      system: SYSTEM_BASE,
-      prompt: regenerateClaimPrompt({
-        resolution: project.resolution,
-        side: variant.side,
-        framework: variant.framework,
-        sectionTitle: section.title,
-        claimTitle: target.title,
-        current: [target.claim, target.warrant, target.impact].filter(Boolean).join("\n"),
-        allowedRefNumbers: allowedNumbers,
-      }),
-      schema: claimRegenerationSchema,
-    });
-    // 書き直した段落も、数字の関所を通す（出典に結びつかない数字を含む文は落とす。§1-9）
-    const materials = new Map((await loadMaterialsFor(variant)).map((m) => [m.id, m]));
-    const location = target.title;
-    const guard = (t: string) => stripUnsourcedNumbers(t, location, variant.sourceRefs, materials);
-    const claimText = guard(data.claim);
-    const warrant = guard(data.warrant);
-    const impact = guard(data.impact);
-    const removedCount = claimText.removed.length + warrant.removed.length + impact.removed.length;
-
-    await snapshot(variant.projectId, variantId, variant.debateCase, "ai");
-    const debateCase: DebateCase = {
-      ...variant.debateCase,
-      sections: variant.debateCase.sections.map((s) => ({
-        ...s,
-        subsections: s.subsections.map((c) =>
-          c.id !== claimId
-            ? c
-            : {
-                ...c,
-                claim: claimText.text,
-                warrant: warrant.text,
-                causalChain: data.causalChain,
-                impact: impact.text,
-              },
-        ),
-      })),
-    };
-    debateCase.fullText = renderFullText(debateCase);
-    // AI が書き直した部分は未確認に戻し、字数も測り直す（§3.3）
-    await db
-      .update(caseVariants)
-      .set({ verified: false, lengthWarning: adjustLengthWarning(debateCase) ?? null })
-      .where(eq(caseVariants.id, variantId));
-    await log(userId, "generate", claimId, variant.projectId, "立論の一部を再生成");
-    const result = await persist(variant, debateCase);
-    if (result.ok && removedCount > 0) {
-      return {
-        ...result,
-        message: `出典に結びつかない数字を含む文を${removedCount}か所取り除きました。`,
-      };
-    }
-    return result;
-  } catch (err) {
-    if (err instanceof LlmSchemaError) {
-      return { error: "AIの出力が読み取れませんでした。もう一度「この部分を再生成」を押してください。" };
-    }
-    return { error: userMessage(err, "再生成に失敗しました。") };
-  }
 }
 
 // ── 使う質疑の選択 ─────────────────────────────────────

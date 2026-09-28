@@ -11,8 +11,8 @@
  * ので、誤指示は実害になる。読み手は自分がどこを読んでいるか分かっている
  * のだから、目安さえ見えれば足りる。
  *
- * より正確に測りたいときのために、段落を読み終えるたびに押す
- * 「ここまで読んだ」を用意した。押した位置から着地見込みを出す。
+ * v7 で「ここまで読んだ」（押した位置から着地見込みを出すボタン）は廃止した。
+ * 読みながら押すのは手間で、光る位置との比較だけで足りるため。
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -24,23 +24,22 @@ import {
   SPEECH_LIMIT_SECONDS,
 } from "@/domain/speech";
 
-const STATE_COLORS = {
-  onTrack: "var(--aff)",
-  behind: "var(--neg)",
-  ahead: "#b45309",
-} as const;
+/**
+ * 光らせる予定の長さ。適正（4分50秒〜5分00秒）のまん中で読み終えるように配分する。
+ * 5分ちょうどで配分すると、予定どおり読んでも境目ぎりぎりになる
+ */
+const PLAN_SECONDS = Math.round((MIN_ACCEPTABLE_SECONDS + SPEECH_LIMIT_SECONDS) / 2);
 
 export function Pacemaker({ debateCase }: { debateCase: DebateCase }) {
   const [open, setOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
-  const [position, setPosition] = useState<number | null>(null);
   const startedAt = useRef<number | null>(null);
   const baseElapsed = useRef(0);
   const currentRef = useRef<HTMLLIElement | null>(null);
 
-  const plan = buildPacingPlan(debateCase, SPEECH_LIMIT_SECONDS);
-  const pace = evaluatePace(plan, elapsed, position);
+  const plan = buildPacingPlan(debateCase, PLAN_SECONDS);
+  const pace = evaluatePace(plan, elapsed, null);
 
   useEffect(() => {
     if (!running) return;
@@ -72,7 +71,6 @@ export function Pacemaker({ debateCase }: { debateCase: DebateCase }) {
     startedAt.current = null;
     setElapsed(0);
     setRunning(false);
-    setPosition(null);
   };
 
   if (!open) {
@@ -88,7 +86,6 @@ export function Pacemaker({ debateCase }: { debateCase: DebateCase }) {
 
   const remaining = SPEECH_LIMIT_SECONDS - elapsed;
   const over = remaining < 0;
-  const projected = pace.projectedSeconds;
 
   return (
     <section className="rounded border-2 border-[var(--accent)] p-4">
@@ -112,23 +109,6 @@ export function Pacemaker({ debateCase }: { debateCase: DebateCase }) {
           閉じる
         </button>
       </div>
-
-      {/* 遅れ・進みは、位置を申告したときだけ言う。
-          分からないのに指示を出すと早口を招く */}
-      <p
-        className="mb-3 rounded p-3 text-sm font-bold"
-        style={{
-          color: STATE_COLORS[pace.state],
-          background: `color-mix(in srgb, ${STATE_COLORS[pace.state]} 10%, transparent)`,
-        }}
-      >
-        {pace.message}
-        {projected !== null && (
-          <span className="mt-1 block font-normal">
-            このペースだと {formatDuration(Math.round(projected))} で読み終わります。
-          </span>
-        )}
-      </p>
 
       <div className="mb-3 flex flex-wrap gap-2">
         {!running ? (
@@ -157,14 +137,13 @@ export function Pacemaker({ debateCase }: { debateCase: DebateCase }) {
 
       <p className="mb-2 text-sm text-[var(--muted)]">
         光っている段落が「いまここまで来ているべき」位置です。
-        段落を読み終えるたびに<b>「ここまで読んだ」</b>を押すと、
-        着地の見込みが出ます。
+        自分が読んでいる位置が光より後ろなら少し詰め、前なら落ち着いて読んでください。
+        予定どおりに読むと、{formatDuration(PLAN_SECONDS)}前後で読み終わります。
       </p>
 
       <ol className="max-h-96 overflow-y-auto rounded border border-[var(--line)] p-3">
         {plan.chunks.map((chunk, i) => {
           const isTarget = i === pace.targetIndex;
-          const isPosition = i === position;
           return (
             <li
               key={chunk.id}
@@ -176,20 +155,9 @@ export function Pacemaker({ debateCase }: { debateCase: DebateCase }) {
                 background: isTarget
                   ? "color-mix(in srgb, var(--accent) 18%, transparent)"
                   : undefined,
-                borderLeft: isPosition
-                  ? "4px solid var(--aff)"
-                  : "4px solid transparent",
               }}
             >
               <span>{chunk.text}</span>
-              {chunk.kind === "body" && (
-                <button
-                  onClick={() => setPosition(i + 1)}
-                  className="ml-2 align-middle text-xs text-[var(--accent)] underline"
-                >
-                  ここまで読んだ
-                </button>
-              )}
             </li>
           );
         })}

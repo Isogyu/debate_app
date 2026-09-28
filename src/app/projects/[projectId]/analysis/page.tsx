@@ -1,5 +1,5 @@
 /**
- * 分析確認画面（DESIGN.md §3 ANAL）
+ * 論題の分析（DESIGN.md §3 ANAL。v7 で一般的な分析＋メモの画面にした）
  *
  * 分析が失敗している場合は、この画面でやり直せるようにする。
  * 失敗を黙って隠すと、空の分析のまま生成に進んでしまう。
@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { issueCategories, projects } from "@/db/schema";
+import { generationQuota } from "@/lib/generation-quota";
 import { Breadcrumb } from "@/components/chrome";
 import { Header } from "@/components/header";
 import { latestAnalysisJob } from "@/lib/jobs/runner";
@@ -36,6 +37,8 @@ export default async function AnalysisPage({
     .from(issueCategories)
     .where(eq(issueCategories.projectId, projectId));
 
+  const { full } = await generationQuota(projectId);
+
   const job = await latestAnalysisJob(projectId);
   const analysisStep = job?.steps.find((s) => s.step === "analysis");
 
@@ -47,20 +50,16 @@ export default async function AnalysisPage({
           items={[
             { label: "ホーム", href: "/" },
             { label: project.title, href: `/projects/${projectId}` },
-            { label: "分析確認" },
+            { label: "論題の分析" },
           ]}
         />
-        <div className="mb-2 flex items-baseline justify-between">
-          <h1 className="text-2xl font-bold">分析結果の確認</h1>
-          <p className="text-sm text-[var(--muted)]">
-            論題の分析（確認してから生成）
-          </p>
-        </div>
+        <h1 className="mb-2 text-2xl font-bold">論題の分析</h1>
         <p className="mb-6 text-sm text-[var(--muted)]">論題: {project.resolution}</p>
 
         {project.analysis ? (
           <AnalysisForm
             readOnly={project.status !== "active"}
+            canGenerate={project.status === "active" && !full}
             data={{
               projectId,
               resolution: project.resolution,
@@ -70,10 +69,12 @@ export default async function AnalysisPage({
                 name: l.name,
                 article: l.article,
               })),
+              stakeholders: project.analysis.stakeholders ?? [],
+              coreIssues: project.analysis.coreIssues ?? [],
               categories: categories
                 .sort((a, b) => a.sortOrder - b.sortOrder)
                 .map((c) => c.name),
-              frameworks: project.analysis.frameworks,
+              memo: project.analysisMemo,
             }}
           />
         ) : (

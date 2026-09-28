@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildQuestionKeys,
+  humanizeFeedbackText,
   keysToIds,
   LONG_TURN_SECONDS,
   longTurnsOf,
@@ -122,4 +123,18 @@ test("段落名を、完全一致・表記ゆれ・見出しで対応付ける",
   assert.equal(matchParagraph("担税力の段落", paragraphs)?.claimId, "c1");
   assert.equal(matchParagraph("", paragraphs), undefined);
   assert.equal(matchParagraph("結論", paragraphs), undefined);
+});
+
+test("講評から内部の記号（[番号]・q1・c2）を取り除く（v7）", () => {
+  assert.equal(
+    humanizeFeedbackText("[3]『所得の分散は起きますか』は良い質問でした"),
+    "3番目の発言『所得の分散は起きますか』は良い質問でした",
+  );
+  assert.equal(humanizeFeedbackText("相手AI（準備済み q1）の質問に詰まりました"), "相手AIの質問に詰まりました");
+  assert.equal(humanizeFeedbackText("相手の1回目の質問〔準備済みの質疑 q4〕に答えられた"), "相手の1回目の質問に答えられた");
+  assert.equal(humanizeFeedbackText("c2の連鎖で結論まで到達しました"), "準備済みの質疑の連鎖で結論まで到達しました");
+  assert.equal(humanizeFeedbackText("q1・q3 に沿って質問できた"), "準備済みの質疑 に沿って質問できた");
+  // 普通の英数字は触らない
+  assert.equal(humanizeFeedbackText("DX化やQ&Aは残す"), "DX化やQ&Aは残す");
+  assert.equal(humanizeFeedbackText("所得税法56条"), "所得税法56条");
 });

@@ -25,7 +25,7 @@ import {
   type LayoutBox,
 } from "@/lib/flowchart-layout";
 // 型だけ使う（値を読むとクライアント部品の参照になってしまう）
-import type { FlowNode, Perspective } from "./flowchart-view";
+import type { FlowNode } from "./flowchart-view";
 
 /** 白黒でも見分けられる枠線。色は補助 */
 const PRINT_STYLES: Record<
@@ -137,17 +137,18 @@ interface PrintLine {
 }
 
 /** 主経路の台本: 質問 → 次へ進む回答 → … → 最後は「認める」回答 → 結論 */
-function mainScript(nodes: FlowNode[], chainId: string, perspective: Perspective): PrintLine[] {
+function mainScript(nodes: FlowNode[], chainId: string): PrintLine[] {
   const path = mainPath(nodes, chainId);
   const lines: PrintLine[] = [];
   path.forEach((n, i) => {
     lines.push({
       speaker: "質問",
       text: n.question,
+      // v7: 攻める側・守る側の切り替えをやめ、ねらいと模範回答を両方出す
       note:
-        perspective === "defense"
-          ? n.modelAnswer && `模範回答：${n.modelAnswer}`
-          : n.purpose && `ねらい：${n.purpose}`,
+        [n.purpose && `ねらい：${n.purpose}`, n.modelAnswer && `模範回答：${n.modelAnswer}`]
+          .filter(Boolean)
+          .join("／") || undefined,
     });
     const next = path[i + 1];
     const branch = next
@@ -160,10 +161,7 @@ function mainScript(nodes: FlowNode[], chainId: string, perspective: Perspective
         speaker: "回答",
         kind: branch.kind,
         text: branch.expectedAnswer,
-        note:
-          perspective === "attack" && branch.exposedWeakness
-            ? `突ける点：${branch.exposedWeakness}`
-            : undefined,
+        note: branch.exposedWeakness ? `突ける点：${branch.exposedWeakness}` : undefined,
       });
     }
   });
@@ -175,19 +173,16 @@ function mainScript(nodes: FlowNode[], chainId: string, perspective: Perspective
 export async function FlowchartPrint({
   nodes,
   title,
-  perspective = "attack",
 }: {
   nodes: FlowNode[];
   title: string;
-  /** 下段に「ねらい」を出すか「模範回答」を出すか */
-  perspective?: Perspective;
 }) {
-  const chains = groupChains(nodes, perspective);
+  const chains = groupChains(nodes, "attack");
   // 印刷は上→下。分岐が横に並び、A4 の幅に収まりやすい
   const layouts = await Promise.all(
     chains.map((c) =>
       layoutChain(c.nodes, {
-        subText: perspective === "defense" ? "modelAnswer" : "purpose",
+        subText: "purpose",
         direction: "DOWN",
       }),
     ),
@@ -206,7 +201,7 @@ export async function FlowchartPrint({
     <div className="print-sheet">
       {chains.map((c, i) => {
         const { root } = c;
-        const script = mainScript(c.nodes, c.chainId, perspective);
+        const script = mainScript(c.nodes, c.chainId);
         return (
           <section key={c.chainId} className={i > 0 ? "print-page-break pt-6" : undefined}>
             {i === 0 && <h1 className="mb-2 text-xl font-bold">{title}</h1>}

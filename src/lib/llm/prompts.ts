@@ -32,9 +32,27 @@ const NEVER_FABRICATE = `
 ${whitelistForPrompt()}
 `.trim();
 
+/**
+ * 税法ディベートであることを前提にする（v7）。
+ * このアプリは税法ゼミの大会（大学対抗 税法ゼミディベート大会）の準備に使う。
+ * 論題が税法以外に見えても、原則として租税法の観点から組み立てさせる。
+ */
+export const TAX_LAW_PREMISE = `
+【前提】税法ディベート
+これは大学の税法ゼミによる政策ディベート（大学対抗の税法ゼミディベート大会）です。
+原則として、論題を**租税法（税法）の問題**として扱ってください。
+- 論証の軸は租税法の基本原則に置く: 租税法律主義（課税要件法定主義・課税要件明確主義）、
+  租税公平主義（担税力に応じた課税・水平的公平・垂直的公平）、中立性、簡素、執行可能性（徴税コスト・税務行政）など
+- 関連する税法（所得税法・法人税法・相続税法・消費税法・租税特別措置法・国税通則法など）の条番号、
+  立法趣旨、判例・裁決、税制調査会の答申などの公的な議論を踏まえる
+- 経済・社会の議論を使う場合も、最後は税制・課税の是非に結びつける
+`.trim();
+
 export const SYSTEM_BASE = `
-あなたは日本の大学の政策ディベート（競技ディベート）の指導者です。
-法的・政策的な論証を、審査員に伝わる構造で組み立てます。
+あなたは日本の大学の税法ゼミで、政策ディベート（競技ディベート）を指導する指導者です。
+税法上の論証を、審査員に伝わる構造で組み立てます。
+
+${TAX_LAW_PREMISE}
 
 ${NEVER_FABRICATE}
 `.trim();
@@ -108,7 +126,9 @@ ${ex.text}
 
 export function analysisPrompt(resolution: string): string {
   return `
-次の論題を分析してください。
+次の論題を、税法ディベートの論題として分析してください。
+これは論題そのものの一般的な分析です（特定の立論の戦い方ではありません）。
+賛成側・反対側のどちらにも偏らず、制度の現状・関連法令・争点を整理してください。
 
 論題: ${resolution}
 
@@ -127,7 +147,11 @@ export function analysisPrompt(resolution: string): string {
 }
 
 注意:
-- 賛成側と反対側で「異なる評価基準の枠組み」を採ることがあります。それぞれに最も有利な枠組みを選んでください。
+- policyChange・statusQuo は、税法の条文と課税の仕組みに即して書いてください。
+- relatedLaws には、論題の中心となる税法の条文を必ず含めてください（関連する他の法令は必要なものだけ）。
+- coreIssues は、租税法の原則（租税公平主義・租税法律主義・中立性・簡素・執行可能性など）から見た争点を中心に、3〜6件。
+- frameworks は立論の生成に使います。税法ディベートでよく使われる枠組み（例: 租税公平主義、税の基本原則「公平・中立・簡素」）から選び、
+  賛成側と反対側で「異なる評価基準の枠組み」を採ることがあります。それぞれに最も有利な枠組みを選んでください。
 - **criteria は短い語**にしてください（2〜8文字程度の名詞）。
 - categories は質疑の整理軸になります。4〜8件、互いに重複しない粒度で。
 `.trim();
@@ -173,7 +197,7 @@ ${exemplarInstruction(ctx.side, ctx.resolution)}
 この条件で立論の骨子だけを出力してください（本文はまだ書かない）。
 
 【厳守】分量の制約から逆算すること
-立論は読み上げ5分で、超過しても30秒以上余っても減点されます。全体で${speechBudgetChars()}字以内です。
+立論は読み上げ5分で、超過しても30秒以上余っても減点されます。目標は4分50秒〜5分00秒、全体で${minAcceptableChars()}〜${speechBudgetChars()}字です。
 そのため**小見出しは全体で4〜6個まで**にしてください。
 
 出力するJSON:
@@ -261,11 +285,11 @@ export function lengthAdjustPrompt(
 ): string {
   const min = minAcceptableChars();
   const max = speechBudgetChars();
-  const target = Math.round((min + max) / 2) + 20;
+  const target = Math.round((min + max) / 2);
   const delta = Math.abs(target - currentChars);
   return `
 立論の読み上げ字数が${direction === "shorten" ? "多すぎ" : "少なすぎ"}ます。
-現在 ${currentChars}字。適正は ${min + 1}〜${max}字（4分30秒超〜5分以内）で、目標は約${target}字です。
+現在 ${currentChars}字。適正は ${min}〜${max}字（4分50秒〜5分00秒）で、目標は約${target}字です。
 **全体で約${delta}字${direction === "shorten" ? "削って" : "足して"}**ください。
 
 ${
@@ -320,51 +344,6 @@ ${allowedNumbers.map((a) => `- 【資料${a.refNumber}参照】${a.label}: ${a.t
 
 出力するJSON:
 { "claim": "...", "warrant": "...", "impact": "..." }
-`.trim();
-}
-
-export interface RegenerateClaimContext {
-  resolution: string;
-  side: Side;
-  framework: string;
-  sectionTitle: string;
-  claimTitle: string;
-  current: string;
-  allowedRefNumbers: number[];
-}
-
-export function regenerateClaimPrompt(ctx: RegenerateClaimContext): string {
-  const refs = ctx.allowedRefNumbers.length
-    ? ctx.allowedRefNumbers.map((n) => `【資料${n}参照】`).join("、")
-    : "（この段落では資料を参照しません）";
-
-  return `
-立論の一部分だけを書き直してください。ほかの部分には手を触れません。
-
-論題: ${ctx.resolution}
-立場: ${sideLabel(ctx.side)}
-評価基準の枠組み: ${ctx.framework}
-このブロックの見出し: ${ctx.sectionTitle}
-書き直す段落の見出し: ${ctx.claimTitle}
-
-現在の本文:
-${ctx.current}
-
-【厳守】長さ
-書き直したあとの claim・warrant・impact の合計を、**現在の本文と同じかそれ以下**にしてください。
-
-【厳守】資料参照・数値
-この段落で使ってよいマーカーは次のものだけです: ${refs}
-- 新しい資料番号を作ってはいけません。
-- 現在の本文にない数値を書いてはいけません。
-
-出力するJSON:
-{
-  "claim": "書き直した本文（スピーチで読み上げる論述体）",
-  "warrant": "なぜそう言えるかの理由づけ",
-  "causalChain": ["因果の段階を一段ずつ"],
-  "impact": "論題の判断にどう効くか"
-}
 `.trim();
 }
 

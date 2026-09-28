@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `analysis_memo` text DEFAULT '' NOT NULL;

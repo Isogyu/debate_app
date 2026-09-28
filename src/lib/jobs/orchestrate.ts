@@ -92,6 +92,57 @@ export async function createTheme(opts: {
   return projectId;
 }
 
+/**
+ * 過去テーマを現テーマに戻す（v7）。いまの現テーマは過去テーマに回す（入れ替え）。
+ * テーマの変更と同じく、生成中は入れ替えられない。
+ * 「現テーマは常に1つ」を守るため、確認と入れ替えを1つのトランザクションで行う。
+ */
+export function restoreTheme(projectId: string): { previous: string | null } {
+  return db.transaction((tx) => {
+    const target = tx.select().from(projects).where(eq(projects.id, projectId)).get();
+    if (!target) throw new RuleError("テーマが見つかりませんでした。");
+    if (target.status === "active") throw new RuleError("このテーマはすでに現テーマです。");
+    const current = tx.select().from(projects).where(eq(projects.status, "active")).get();
+    if (current) {
+      if (hasActiveJobTx(tx, { projectId: current.id })) {
+        throw new RuleError(
+          "生成中のため、テーマを切り替えられません。いま動いている生成が終わってから切り替えてください。",
+        );
+      }
+      // 先に今の現テーマを過去テーマにする（現テーマが2つになる瞬間を作らない）
+      tx.update(projects)
+        .set({ status: "archived", archivedAt: nowIso(), updatedAt: nowIso() })
+        .where(eq(projects.id, current.id))
+        .run();
+    }
+    tx.update(projects)
+      .set({ status: "active", archivedAt: null, updatedAt: nowIso() })
+      .where(eq(projects.id, projectId))
+      .run();
+    return { previous: current?.id ?? null };
+  });
+}
+
+/**
+ * 過去テーマを完全に削除する（v7）。立論・資料・質疑・練習の記録もまとめて消える
+ * （外部キーの ON DELETE CASCADE）。現テーマは削除できない（先に切り替える）。
+ * 登録したファイルの置き場所を返すので、呼び出し側で消す。
+ */
+export function deleteArchivedTheme(projectId: string): { resolution: string } {
+  return db.transaction((tx) => {
+    const target = tx.select().from(projects).where(eq(projects.id, projectId)).get();
+    if (!target) throw new RuleError("テーマが見つかりませんでした。");
+    if (target.status === "active") {
+      throw new RuleError("現テーマは削除できません。別のテーマを現テーマにしてから削除してください。");
+    }
+    if (hasActiveJobTx(tx, { projectId })) {
+      throw new RuleError("このテーマでまだ処理が動いています。終わってから削除してください。");
+    }
+    tx.delete(projects).where(eq(projects.id, projectId)).run();
+    return { resolution: target.resolution };
+  });
+}
+
 async function runAnalysis(jobId: string, projectId: string, userId: string) {
   const status = await runJob(jobId);
   if (status === "done") await afterAnalysis(projectId, userId);

@@ -30,6 +30,7 @@ import { simulatorFeedbackSchema, simulatorReplySchema } from "@/domain/schemas"
 import { questionKey } from "@/domain/cross-exam";
 import {
   buildQuestionKeys,
+  humanizeFeedbackText,
   keysToIds,
   LONG_TURN_SECONDS,
   longTurnsOf,
@@ -429,15 +430,17 @@ export async function finishPractice(
     await recordUsage(session.projectId, usage);
 
     const goalByChain = new Map(keysWithUsed.chains.map((c) => [c.chainId, c.goal]));
+    // 講評に内部の記号（[3]・q1 など）が残っていたら、分かる言葉に直す（v7）
+    const human = (list: string[]) => list.map(humanizeFeedbackText).filter(Boolean);
     const feedback: PracticeFeedback = {
-      strengths: data.strengths,
-      weaknesses: data.weaknesses,
-      suggestions: data.suggestions,
-      summary: data.summary,
+      strengths: human(data.strengths),
+      weaknesses: human(data.weaknesses),
+      suggestions: human(data.suggestions),
+      summary: humanizeFeedbackText(data.summary),
       chains: data.chains.flatMap((c) => {
         const chainId = keysWithUsed.chainIdByKey.get(c.key.trim().toLowerCase());
         return chainId
-          ? [{ chainId, goal: goalByChain.get(chainId) ?? "", reached: c.reached, note: c.note }]
+          ? [{ chainId, goal: goalByChain.get(chainId) ?? "", reached: c.reached, note: humanizeFeedbackText(c.note) }]
           : [];
       }),
       longTurns: longTurnsOf(lengths),
@@ -452,7 +455,7 @@ export async function finishPractice(
       stuckNodeIds: [],
       addedNodeIds: [],
       closingExample: data.closingExample
-        ? guardText(data.closingExample, closingAllowed).text
+        ? humanizeFeedbackText(guardText(data.closingExample, closingAllowed).text)
         : undefined,
     };
     // 過去テーマは閲覧のみ。練習はできるが、質疑データへの反映はしない（§2 F1）

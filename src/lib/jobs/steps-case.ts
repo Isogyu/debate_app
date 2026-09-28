@@ -326,7 +326,7 @@ export function lengthStatus(text: string): "short" | "ok" | "over" {
 export const MAX_LENGTH_ADJUSTMENTS = 2;
 
 /**
- * 字数を 4分30秒超〜5分00秒 に収める（§3.3）。
+ * 字数を 4分50秒〜5分00秒 に収める（§3.3）。
  * 2回直して収まらなければ、警告を付けて保存する。
  */
 export async function adjustLength(

@@ -5,7 +5,10 @@
  *
  * 審査要項より（大学対抗 税法ゼミディベート大会）:
  *  - 「時間オーバーや30秒以上時間が余った場合は審査員の判断で減点」
- *    → **短すぎても減点される**。適正は 4分30秒超〜5分00秒 の30秒幅
+ *    → **短すぎても減点される**。減点されないのは 4分30秒超〜5分00秒
+ *  - v7 から、アプリの目標（適正）はさらに狭い **4分50秒〜5分00秒** にしている。
+ *    読む速さは本番の緊張で変わるので、減点の境目（4分30秒）ぎりぎりを狙わず、
+ *    余りを10秒以内に抑える原稿を目指す
  *  - 「終了時とは、立論に記載された最後の文字を読み上げた時点」
  *  - 「時間調整のため早口だったり、遅すぎる口調だったりする場合は、
  *    立論のボリュームに関するアイデアが足りないものとして減点」
@@ -28,10 +31,14 @@ export const SPEECH_LIMIT_SECONDS = 300;
 export const DEFAULT_CHARS_PER_MINUTE = 320;
 
 /**
- * これ以上余らせると減点される（残り30秒）。
- * つまり適正な読み上げ時間は 270秒超〜300秒 の30秒幅しかない。
+ * アプリが「適正」とする読み上げ時間の下限（4分50秒）。
+ * 審査要項の減点は「30秒以上余った場合」だが、本番で読む速さがぶれても
+ * 減点されないよう、目標は 290秒〜300秒 の10秒幅にしている（v7）。
  */
-export const MIN_ACCEPTABLE_SECONDS = SPEECH_LIMIT_SECONDS - 30;
+export const MIN_ACCEPTABLE_SECONDS = SPEECH_LIMIT_SECONDS - 10;
+
+/** 審査要項で減点される余り（30秒以上）。説明文に使う */
+export const PENALTY_SURPLUS_SECONDS = 30;
 
 /**
  * 読み上げる文字数を数える。
@@ -67,16 +74,16 @@ export function speechBudgetChars(
   return Math.round((SPEECH_LIMIT_SECONDS / 60) * charsPerMinute);
 }
 
-/** 減点されない文字数の下限（これ以下だと30秒以上余る） */
+/** 適正（4分50秒以上）になる文字数の下限 */
 export function minAcceptableChars(
   charsPerMinute: number = DEFAULT_CHARS_PER_MINUTE,
 ): number {
-  return Math.round((MIN_ACCEPTABLE_SECONDS / 60) * charsPerMinute);
+  return Math.ceil((MIN_ACCEPTABLE_SECONDS / 60) * charsPerMinute);
 }
 
 /**
- * short = 余りすぎ（30秒以上余ると減点）
- * ok    = 適正（4分30秒超〜5分00秒）
+ * short = 短い（4分50秒に届かない。30秒以上余ると減点）
+ * ok    = 適正（4分50秒〜5分00秒）
  * over  = 超過（減点）
  */
 export type SpeechVerdict = "short" | "ok" | "over";
@@ -103,14 +110,14 @@ export function estimateSpeech(
 ): SpeechEstimate {
   const chars = countSpeechChars(text);
   // 判定は丸める前の秒数で行う。丸めた値で判定すると、1,601字（300.19秒）が
-  // 「5分ちょうど＝適正」、1,441字（270.19秒）が「余りすぎ」と逆に出る
+  // 「5分ちょうど＝適正」と逆に出る
   const exactSeconds = (chars / charsPerMinute) * 60;
   const ratio = exactSeconds / SPEECH_LIMIT_SECONDS;
 
   const verdict: SpeechVerdict =
     exactSeconds > SPEECH_LIMIT_SECONDS
       ? "over"
-      : exactSeconds <= MIN_ACCEPTABLE_SECONDS
+      : exactSeconds < MIN_ACCEPTABLE_SECONDS
         ? "short"
         : "ok";
   // 表示用の秒数は判定と食い違わないように丸める（超過なら切り上げ、余りなら切り捨て）
@@ -119,7 +126,7 @@ export function estimateSpeech(
       ? Math.ceil(exactSeconds)
       : verdict === "short"
         ? Math.floor(exactSeconds)
-        : Math.min(SPEECH_LIMIT_SECONDS, Math.max(MIN_ACCEPTABLE_SECONDS + 1, estimateSeconds(chars, charsPerMinute)));
+        : Math.min(SPEECH_LIMIT_SECONDS, Math.max(MIN_ACCEPTABLE_SECONDS, estimateSeconds(chars, charsPerMinute)));
 
   const label =
     verdict === "over"
@@ -151,8 +158,8 @@ export function speechBudgetGuide(
   return [
     `【厳守】分量`,
     `立論は読み上げ5分です。**超過しても、30秒以上余らせても減点されます。**`,
+    `本番で読む速さがぶれても減点されないよう、目標は4分50秒〜5分00秒です。`,
     `全体で **${min}〜${total}字** に収めてください。上限だけでなく下限も守ること。`,
-    `（実際の試合で使われた立論4件は1,494〜1,577字でした）`,
     `小見出しは${subsectionCount}個の想定なので、1つあたり${minPer}〜${per}字が目安です。`,
     `多すぎるときは説明を足すのではなく**論点を削り**、`,
     `少なすぎるときは論証を**一段深める**（因果を一段ずつ書く）ことで足してください。`,

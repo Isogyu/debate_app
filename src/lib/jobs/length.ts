@@ -11,5 +11,5 @@ export function adjustLengthWarning(debateCase: DebateCase): string | undefined 
   const chars = countSpeechChars(debateCase.fullText);
   return est.verdict === "over"
     ? `自動調整でも収まりませんでした。推定 ${est.label}。${chars - speechBudgetChars()}字ほど削ってください。`
-    : `自動調整でも足りませんでした。推定 ${est.label}。${minAcceptableChars() + 1 - chars}字以上足してください。`;
+    : `自動調整でも足りませんでした。推定 ${est.label}。${minAcceptableChars() - chars}字以上足してください。`;
 }
