@@ -200,3 +200,23 @@ export function matchParagraph<P extends { claimId: string; label: string; title
   // 複数当たるときは曖昧なので当てはめない
   return byTitle.length === 1 ? byTitle[0] : undefined;
 }
+
+/**
+ * 講評の文から、内部の記号を取り除く（v7）。
+ *
+ * AI には発言を番号（[3]）で、準備済みの質疑をキー（q1・c2）で渡している。
+ * 講評にそのまま書かれると、練習者には何のことか分からない。
+ * プロンプトでも「あなたの2回目の質問」のように書かせているが、残ったときのためにここでも直す。
+ *  - [3] / ［3］      → 「3番目の発言」
+ *  - （準備済み q1）   → 消す
+ *  - 残った q1・c2    → 「準備済みの質疑」
+ */
+export function humanizeFeedbackText(text: string): string {
+  return text
+    .replace(/[（(〔]\s*(?:準備済み(?:の質疑|の質問)?\s*[:：]?\s*)?[qcQC]\d+\s*[）)〕]/g, "")
+    .replace(/[[［]\s*(\d+)\s*[\]］]/g, "$1番目の発言")
+    .replace(/(?:準備済み(?:の質疑|の質問)?\s*)?(?<![A-Za-z0-9])[qcQC]\d+(?![A-Za-z0-9])/g, "準備済みの質疑")
+    .replace(/準備済みの質疑(?:\s*[・、,]\s*準備済みの質疑)+/g, "準備済みの質疑")
+    .replace(/[ 　]{2,}/g, " ")
+    .trim();
+}

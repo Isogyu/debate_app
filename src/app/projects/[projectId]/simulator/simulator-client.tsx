@@ -7,6 +7,7 @@
  * 練習を続けてもらうことが目的なので、講評はよかった点から見せる。
  */
 
+import { humanizeFeedbackText } from "@/domain/practice";
 import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -359,7 +360,7 @@ function Feedback({ feedback }: { feedback: PracticeFeedback }) {
               <ul className="list-disc space-y-1 pl-5">
                 {s.items.map((item, i) => (
                   <li key={i} className="leading-7">
-                    {item}
+                    {humanizeFeedbackText(item)}
                   </li>
                 ))}
               </ul>
@@ -369,7 +370,7 @@ function Feedback({ feedback }: { feedback: PracticeFeedback }) {
 
       <div className="mb-4">
         <h3 className="mb-2 font-bold">総評</h3>
-        <p className="leading-7">{feedback.summary}</p>
+        <p className="leading-7">{humanizeFeedbackText(feedback.summary)}</p>
       </div>
 
       <div className="mb-4">
@@ -398,7 +399,7 @@ function Feedback({ feedback }: { feedback: PracticeFeedback }) {
                     >
                       {c.reached ? "到達した" : "到達しなかった"}
                     </td>
-                    <td className="p-2">{c.note}</td>
+                    <td className="p-2">{humanizeFeedbackText(c.note)}</td>
                   </tr>
                 ))}
               </tbody>

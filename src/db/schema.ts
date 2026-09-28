@@ -59,6 +59,8 @@ export const projects = sqliteTable(
       .notNull()
       .default(false),
     analysis: text("analysis", { mode: "json" }).$type<ResolutionAnalysis>(),
+    /** 論題の分析に添える自由記述のメモ（v7）。チームの気づき・方針を書き留める */
+    analysisMemo: text("analysis_memo").notNull().default(""),
     createdBy: text("created_by"),
     createdAt: text("created_at").notNull().default(now),
     updatedAt: text("updated_at").notNull().default(now),

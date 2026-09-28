@@ -34,9 +34,6 @@
   .room .quote { border-left: 3px solid var(--warn); padding: 6px 14px; color: #c9d6e6; margin: 18px 0; }
   .room .btn { display: inline-block; margin-top: 18px; padding: 12px 22px; border: 1px solid var(--ok); color: var(--ok); border-radius: 999px; text-decoration: none; cursor: pointer; background: none; font: inherit; }
   @media (max-width: 600px) { .room h1 { font-size: 26px; } }
-  .copybar { position: sticky; top: 0; display: flex; justify-content: flex-end; padding: 10px 0 0; background: linear-gradient(var(--bg) 70%, transparent); }
-  .copybtn { font: inherit; font-size: 12px; color: var(--fg); background: #13203a; border: 1px solid #2a3b57; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-  .copybtn:hover { background: #1a2a48; }
   .syslog { position: fixed; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 10.5px; color: #1f2d44; pointer-events: none; padding: 0 12px; line-height: 1.4; }
   .room .small { font-size: 12px; color: var(--dim); }
 </style>
@@ -235,14 +232,6 @@
     if (!sel || !e.clipboardData) return;
     e.clipboardData.setData("text/plain", sel + AI_NOTE);
     e.preventDefault();
-  });
-  document.getElementById("copyAll").addEventListener("click", async () => {
-    const text = out.innerText + AI_NOTE;
-    const btn = document.getElementById("copyAll");
-    try { await navigator.clipboard.writeText(text); btn.textContent = "✓ コピーしました"; }
-    catch { btn.textContent = "コピーできませんでした"; }
-    setTimeout(() => { btn.textContent = "📋 画面の内容をコピー"; }, 2000);
-    cmd.focus();
   });
 
   print("$ curl https://debate-app-zemi.fly.dev/egg/", "dim");

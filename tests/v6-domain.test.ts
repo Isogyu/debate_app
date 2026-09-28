@@ -348,11 +348,11 @@ test("派生文章の数字の関所: 立論・資料にない数字を含む文
   assert.ok(hasDisallowedNumber("2倍に増えた。", allowed));
 });
 
-test("5分判定は丸める前の秒数で行う（1,601字は超過、1,441字は適正）", () => {
+test("5分判定は丸める前の秒数で行う（1,601字は超過、1,547字は適正）", () => {
   assert.equal(estimateSpeech("あ".repeat(1601)).verdict, "over");
   assert.equal(estimateSpeech("あ".repeat(1600)).verdict, "ok");
-  assert.equal(estimateSpeech("あ".repeat(1441)).verdict, "ok");
-  assert.equal(estimateSpeech("あ".repeat(1440)).verdict, "short");
+  assert.equal(estimateSpeech("あ".repeat(1547)).verdict, "ok");
+  assert.equal(estimateSpeech("あ".repeat(1546)).verdict, "short");
 });
 
 test("行の範囲が壊れていたら例外にする（ランナーがやり直す）", () => {

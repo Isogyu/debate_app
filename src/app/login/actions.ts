@@ -33,7 +33,7 @@ export async function login(
   if (!appPasswordConfigured()) {
     return {
       error:
-        "サーバーに合言葉が設定されていません。管理者に連絡してください。（.env の DEBATE_APP_PASSWORD）",
+        "サーバーにパスワードが設定されていません。管理者に連絡してください。（.env の DEBATE_APP_PASSWORD）",
     };
   }
   if (!displayName) {
@@ -41,7 +41,7 @@ export async function login(
   }
   if (!checkAppPassword(password)) {
     // どちらが違うかは言わない。総当たりの手がかりを与えないため
-    return { error: "合言葉が違います。" };
+    return { error: "パスワードが違います。" };
   }
 
   const userId = await resolveUser(displayName);

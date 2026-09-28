@@ -193,12 +193,19 @@ export function simulatorFeedbackPrompt(ctx: {
   closingFrame?: string;
 }): string {
   const userRole = ctx.mode === "attack" ? "質問" : "回答";
+  const aiRole = ctx.mode === "attack" ? "回答" : "質問";
+  // 発言は「あなたの2回目の質問」のように、講評でそのまま使える呼び名で渡す（v7）。
+  // 以前は [3] のような番号で渡していて、講評にも番号のまま書かれて分かりにくかった
+  let userCount = 0;
+  let aiCount = 0;
   const transcript = ctx.turns
-    .map((t, i) => {
+    .map((t) => {
       if (t.speaker === "user") {
-        return `[${i + 1}] 練習者（${userRole}・推定${t.seconds ?? "?"}秒）: ${t.text}`;
+        userCount++;
+        return `・あなたの${userCount}回目の${userRole}（推定${t.seconds ?? "?"}秒）: ${t.text}`;
       }
-      return `[${i + 1}] 相手AI${t.key ? `（準備済み ${t.key}）` : ""}: ${t.text}`;
+      aiCount++;
+      return `・相手の${aiCount}回目の${aiRole}${t.key ? `〔準備済みの質疑 ${t.key}〕` : ""}: ${t.text}`;
     })
     .join("\n");
 
@@ -268,12 +275,15 @@ ${focus}
 準備済みの質疑（キー付き）:
 ${formatChains(ctx.chains, { withModelAnswer: true })}
 
-記録（[番号] は発言の番号）:
+記録（「あなた」＝練習者、「相手」＝相手AI）:
 ${transcript}
 
 講評の方針:
 - strengths（よかった点）を必ず先に、1つ以上書く。練習を続けてもらうことが第一
-- weaknesses（直す点）は、該当する発言を「[番号]『引用』」の形で示す
+- weaknesses（直す点）は、該当する発言を「あなたの2回目の${userRole}『引用』」のように、記録の呼び名と短い引用で示す
+- 【厳守】講評の文章（strengths・weaknesses・suggestions・summary・chains の note・closingExample）には、
+  q1・c2 のようなキーや、[3] のような番号を**書かない**。練習者には意味が分からないため。
+  準備済みの質疑に触れるときは、その質問の内容（「〜について聞く質問」など）で言い表す
 - suggestions には、実際にそのまま言える言い換えの例文を入れる（「もっと鋭く」のような抽象的な助言は書かない）
 - summary は全体の講評を2〜3文で
 - テーマそのものへの賛否は述べない。評価するのは質疑の運び方

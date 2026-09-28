@@ -15,18 +15,28 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DEFAULT_CHARS_PER_MINUTE, formatDuration } from "@/domain/speech";
+import {
+  DEFAULT_CHARS_PER_MINUTE,
+  formatDuration,
+  MIN_ACCEPTABLE_SECONDS,
+  SPEECH_LIMIT_SECONDS,
+} from "@/domain/speech";
 
 /** タイムキーパーが合図する残り秒数（審査要項5） */
 const SIGNALS = [60, 30] as const;
 /** 合図の大きな表示を出しておく時間 */
 const SIGNAL_MS = 3000;
 
-/** 種目ごとの持ち時間（審査要項5） */
+/**
+ * 種目ごとの持ち時間（審査要項5）。
+ * targetSurplus = これ以上余ったら「短い」と色を変える秒数。
+ * 審査要項の減点は30秒以上余ったときだが、立論は v7 から安全側に
+ * 4分50秒〜5分00秒（余り10秒以内）を目標にしている。
+ */
 export const SPEECH_KINDS = [
-  { key: "case", label: "立論", seconds: 300, hasMinimum: true },
-  { key: "question", label: "質疑", seconds: 480, hasMinimum: false },
-  { key: "closing", label: "最終弁論", seconds: 60, hasMinimum: true },
+  { key: "case", label: "立論", seconds: 300, targetSurplus: SPEECH_LIMIT_SECONDS - MIN_ACCEPTABLE_SECONDS },
+  { key: "question", label: "質疑", seconds: 480, targetSurplus: null },
+  { key: "closing", label: "最終弁論", seconds: 60, targetSurplus: 30 },
 ] as const;
 
 export type SpeechKind = (typeof SPEECH_KINDS)[number]["key"];
@@ -201,8 +211,9 @@ export function SpeechTimer({
 
   const remaining = limit - elapsed;
   const over = remaining < 0;
-  // 30秒以上余らせるのも減点なので、そこも色を変える（立論・最終弁論のみ）
-  const tooShort = kind.hasMinimum && elapsed > 0 && !running && remaining >= 30;
+  // 余らせすぎも減点なので、目標より余ったら色を変える（立論・最終弁論のみ）
+  const tooShort =
+    kind.targetSurplus !== null && elapsed > 0 && !running && remaining > kind.targetSurplus;
   const color = phaseColor(remaining, tooShort);
   const timeText = `${over ? "+" : ""}${formatDuration(Math.floor(Math.abs(remaining)))}`;
 
@@ -320,9 +331,12 @@ export function SpeechTimer({
 
       <p className="mt-3 text-sm text-[var(--muted)]">
         経過 {formatDuration(Math.floor(elapsed))} / 持ち時間 {formatDuration(limit)}
-        {kind.hasMinimum && (
-          <span className="ml-2">（30秒以上余ると減点。適正は残り0〜30秒で終わること）</span>
+        {kind.key === "case" && (
+          <span className="ml-2">
+            （適正は{formatDuration(MIN_ACCEPTABLE_SECONDS)}〜{formatDuration(SPEECH_LIMIT_SECONDS)}＝残り10秒以内で読み終えること。30秒以上余ると減点）
+          </span>
         )}
+        {kind.key === "closing" && <span className="ml-2">（30秒以上余ると減点）</span>}
         <span className="mt-1 block">
           1分前と30秒前に、画面の色が変わり大きく表示されます（音は出ません）。
         </span>
@@ -331,7 +345,9 @@ export function SpeechTimer({
       {tooShort && (
         <p className="mt-2 text-sm" style={{ color }}>
           <b>{formatDuration(Math.floor(remaining))}余りました。</b>
-          30秒以上余ると減点されます。
+          {kind.key === "case" && remaining < 30
+            ? "減点にはなりませんが、目標（残り10秒以内）より短めです。"
+            : "30秒以上余ると減点されます。"}
           {adviseFixes && kind.key === "case" ? "早く読み終えたなら、分量を足してください。" : ""}
         </p>
       )}

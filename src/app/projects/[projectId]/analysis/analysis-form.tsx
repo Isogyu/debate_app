@@ -1,17 +1,23 @@
 "use client";
 
 /**
- * 分析確認画面（DESIGN.md §3 ANAL）★品質ゲート
+ * 論題の分析（v7）
  *
- * LLMの法解釈は誤りうる（REQUIREMENTS §13-3）。ここで人が直してから
- * 生成に進む、という流れを必須にすることで品質を担保する。
- * だから「AIの分析です」の警告バーは消さず、全項目を編集可能にする。
+ * v7 で役割を分けた:
+ *  - ここは論題そのものの一般的な分析（制度・法令・争点）と、チームのメモを置く場所
+ *  - 評価基準の枠組みと生成の開始は「立論を生成する」画面へ移した
+ *  - 立論ごとの特徴と戦い方は、各立論の「特徴と戦い方」タブにある
+ *
+ * LLMの法解釈は誤りうる（REQUIREMENTS §13-3）。だから「AIの分析です」の警告は消さず、
+ * 全項目を人が直せるようにしておく。
+ *
+ * 用語の説明は、点線の下線（ホバーで出る説明）をやめて見出しの下に普通に書く。
+ * 「とは」「重要」に下線が付いて不自然に見えていたため（v7）。
  */
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { saveAnalysis, startGeneration, type FormState } from "../../actions";
-import { Term } from "@/components/chrome";
+import { saveAnalysis, type FormState } from "../../actions";
 import { keepInputs } from "@/components/keep-inputs";
 
 export interface AnalysisFormData {
@@ -20,64 +26,69 @@ export interface AnalysisFormData {
   policyChange: string;
   statusQuo: string;
   relatedLaws: { name: string; article: string }[];
+  stakeholders: string[];
+  coreIssues: string[];
   categories: string[];
-  frameworks: {
-    affirmative: { name: string; basisLaw?: string; criteria: string[] };
-    negative: { name: string; basisLaw?: string; criteria: string[] };
-  };
+  memo: string;
 }
 
-export function AnalysisForm({ data, readOnly = false }: { data: AnalysisFormData; readOnly?: boolean }) {
-  const [saveState, saveAction, saving] = useActionState<FormState, FormData>(
-    saveAnalysis,
-    {},
+function Heading({ title, note }: { title: string; note?: string }) {
+  return (
+    <div className="mb-2">
+      <h2 className="font-bold">{title}</h2>
+      {note && <p className="text-sm text-[var(--muted)]">{note}</p>}
+    </div>
   );
-  const [genState, genAction, generating] = useActionState<FormState, FormData>(
-    startGeneration,
-    {},
-  );
+}
+
+export function AnalysisForm({
+  data,
+  readOnly = false,
+  canGenerate = false,
+}: {
+  data: AnalysisFormData;
+  readOnly?: boolean;
+  /** 「立論を生成する」への案内を出すか（生成の上限に達していない現テーマのみ） */
+  canGenerate?: boolean;
+}) {
+  const [state, action, saving] = useActionState<FormState, FormData>(saveAnalysis, {});
   const [laws, setLaws] = useState(
     data.relatedLaws.length > 0 ? data.relatedLaws : [{ name: "", article: "" }],
   );
 
-  // 過去テーマは閲覧のみ（§2 F1）。入力も送信もさせない
-  const busy = saving || generating || readOnly;
-  const error = genState.error ?? saveState.error;
+  // 過去テーマは閲覧のみ。入力も送信もさせない
+  const busy = saving || readOnly;
 
   return (
     <form
       className="space-y-7"
       // 送信後も入力を残す（React 19 の自動リセットで、追加した法令などが消えていた）
-      onSubmit={keepInputs((fd, intent) => (intent === "generate" ? genAction : saveAction)(fd))}
+      onSubmit={keepInputs((fd) => action(fd))}
     >
       <input type="hidden" name="projectId" value={data.projectId} />
 
-      <p
-        role="status"
-        className="rounded border-2 border-[var(--neg)] bg-[var(--neg)]/5 p-3 text-sm"
-      >
+      <p role="status" className="rounded border-2 border-[var(--neg)] bg-[var(--neg)]/5 p-3 text-sm">
         ⚠ これはAIの分析です。<b>間違いがあればこの画面で直してください。</b>
-        ここで直した内容をもとに、立論や資料要件が作られます。
+        税法ゼミのディベートを前提に、論題の制度・法令・争点を整理しています。
+        立論ごとの特徴と戦い方は、各立論の「特徴と戦い方」タブにあります。
       </p>
 
-      {error && (
+      {state.error && (
         <p role="alert" className="rounded border-2 border-[var(--neg)] p-3 text-sm">
-          {error}
+          {state.error}
         </p>
       )}
-      {!error && saveState.ok && !saving && (
+      {!state.error && state.ok && !saving && (
         <p role="status" className="rounded border-2 border-[var(--aff)] p-3 text-sm">
           保存しました。
         </p>
       )}
 
       <section>
-        <h2 className="mb-2 font-bold">
-          この政策が変えるもの{" "}
-          <Term note="論題によって現状のどこが変わるのかを一文で表したものです。ここがずれると立論全体がずれます。">
-            とは
-          </Term>
-        </h2>
+        <Heading
+          title="この政策が変えるもの"
+          note="論題によって現状のどこが変わるのかを一文で。ここがずれると立論全体がずれます。"
+        />
         <textarea
           name="policyChange"
           rows={2}
@@ -85,10 +96,12 @@ export function AnalysisForm({ data, readOnly = false }: { data: AnalysisFormDat
           disabled={busy}
           className="w-full rounded border border-[var(--line)] p-3"
         />
-        <h2 className="mt-4 mb-2 font-bold">現状の制度</h2>
+        <div className="mt-4">
+          <Heading title="現状の制度" />
+        </div>
         <textarea
           name="statusQuo"
-          rows={2}
+          rows={3}
           defaultValue={data.statusQuo}
           disabled={busy}
           className="w-full rounded border border-[var(--line)] p-3"
@@ -96,18 +109,16 @@ export function AnalysisForm({ data, readOnly = false }: { data: AnalysisFormDat
       </section>
 
       <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-bold">
-            関連する法令{" "}
-            <Term note="条文の全文はAIに書かせていません。誤記を避けるため、資料画面でe-Gov法令検索から取得して登録します。">
-              条文について
-            </Term>
-          </h2>
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <Heading
+            title="関連する法令"
+            note="条文の全文はAIに書かせていません。誤記を避けるため、資料としてe-Gov法令検索から取得します。"
+          />
           <button
             type="button"
             disabled={busy}
             onClick={() => setLaws([...laws, { name: "", article: "" }])}
-            className="rounded border border-[var(--line)] px-3 py-1 text-sm"
+            className="shrink-0 rounded border border-[var(--line)] px-3 py-1 text-sm"
           >
             ＋ 追加
           </button>
@@ -141,18 +152,35 @@ export function AnalysisForm({ data, readOnly = false }: { data: AnalysisFormDat
             </li>
           ))}
         </ul>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          条文の全文はあとから資料画面で登録します（AIには書かせていません）。
-        </p>
       </section>
 
       <section>
-        <h2 className="mb-2 font-bold">
-          争点カテゴリ{" "}
-          <Term note="質疑を整理する見出しになります。">
-            重要
-          </Term>
-        </h2>
+        <Heading title="影響を受ける人・主体" note="読点か改行で区切ってください。" />
+        <textarea
+          name="stakeholders"
+          rows={2}
+          defaultValue={data.stakeholders.join("、")}
+          disabled={busy}
+          className="w-full rounded border border-[var(--line)] p-3"
+        />
+      </section>
+
+      <section>
+        <Heading title="この論題の中心的な争点" note="1行に1つずつ書いてください。" />
+        <textarea
+          name="coreIssues"
+          rows={Math.max(3, data.coreIssues.length + 1)}
+          defaultValue={data.coreIssues.join("\n")}
+          disabled={busy}
+          className="w-full rounded border border-[var(--line)] p-3"
+        />
+      </section>
+
+      <section>
+        <Heading
+          title="争点カテゴリ（質疑を整理する見出し）"
+          note="質疑と回答・フローチャートを分類する見出しになります。読点か改行で区切り、4〜8件程度が目安です。"
+        />
         <textarea
           name="categories"
           rows={3}
@@ -160,102 +188,50 @@ export function AnalysisForm({ data, readOnly = false }: { data: AnalysisFormDat
           disabled={busy}
           className="w-full rounded border border-[var(--line)] p-3"
         />
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          読点か改行で区切ってください。
-          質疑の分類に使います
-          。4〜8件程度が目安です。
-        </p>
       </section>
 
       <section>
-        <h2 className="mb-2 font-bold">
-          評価基準の枠組み{" "}
-          <Term note="どの物差しで政策の是非を測るかの枠組みです。賛成側と反対側で別々の枠組みを使うことがあります（例: 租税公平主義 と 税の基本原則）。">
-            とは
-          </Term>
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {(
-            [
-              { key: "aff", label: "賛成側", color: "var(--aff)", fw: data.frameworks.affirmative },
-              { key: "neg", label: "反対側", color: "var(--neg)", fw: data.frameworks.negative },
-            ] as const
-          ).map((side) => (
-            <div
-              key={side.key}
-              className="rounded border-2 p-3"
-              style={{ borderColor: side.color }}
-            >
-              <p className="mb-2 font-bold" style={{ color: side.color }}>
-                {side.label}
-              </p>
-              <label className="mb-2 block">
-                <span className="mb-1 block text-sm">枠組み名</span>
-                <input
-                  name={`${side.key}Framework`}
-                  defaultValue={side.fw.name}
-                  disabled={busy}
-                  className="w-full rounded border border-[var(--line)] p-2"
-                />
-              </label>
-              <label className="mb-2 block">
-                <span className="mb-1 block text-sm">根拠となる法令（任意）</span>
-                <input
-                  name={`${side.key}BasisLaw`}
-                  defaultValue={side.fw.basisLaw ?? ""}
-                  disabled={busy}
-                  className="w-full rounded border border-[var(--line)] p-2"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm">評価基準（読点区切り）</span>
-                <input
-                  name={`${side.key}Criteria`}
-                  defaultValue={side.fw.criteria.join("、")}
-                  disabled={busy}
-                  className="w-full rounded border border-[var(--line)] p-2"
-                />
-              </label>
-            </div>
-          ))}
-        </div>
+        <Heading
+          title="メモ"
+          note="チームの気づき・方針・調べたいことなどを自由に書き留めてください。AIの生成には使いません。"
+        />
+        <textarea
+          name="memo"
+          rows={8}
+          defaultValue={data.memo}
+          disabled={busy}
+          placeholder="例: 反対側は執行コストで来そう。国税庁の統計年報で調査件数を確認しておく。"
+          className="w-full rounded border border-[var(--line)] p-3"
+        />
       </section>
 
       {readOnly ? (
         <p className="border-t border-[var(--line)] pt-5 text-sm text-[var(--muted)]">
-          過去テーマのため閲覧のみです。
+          過去テーマのため閲覧のみです。編集するには、テーマ画面で現テーマに戻してください。
         </p>
       ) : (
-      <>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-5">
-        <Link href="/" className="text-sm text-[var(--muted)] hover:underline">
-          ← あとで続ける
-        </Link>
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            name="intent"
-            value="save"
-            disabled={busy}
-            className="rounded border-2 border-[var(--line)] px-5 py-3 disabled:opacity-60"
-          >
-            {saving ? "保存中…" : "修正を保存する"}
-          </button>
-          <button
-            type="submit"
-            name="intent"
-            value="generate"
-            disabled={busy}
-            className="rounded bg-[var(--accent)] px-6 py-3 font-bold text-white disabled:opacity-60"
-          >
-            {generating ? "開始しています…" : "この内容で生成開始 →"}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-5">
+          <Link href={`/projects/${data.projectId}`} className="text-sm text-[var(--muted)] hover:underline">
+            ← テーマの画面に戻る
+          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            {canGenerate && (
+              <Link
+                href={`/projects/${data.projectId}/generate`}
+                className="text-sm text-[var(--accent)] underline"
+              >
+                立論を生成する →
+              </Link>
+            )}
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded bg-[var(--accent)] px-6 py-3 font-bold text-white disabled:opacity-60"
+            >
+              {saving ? "保存中…" : "保存する"}
+            </button>
+          </div>
         </div>
-      </div>
-      <p className="text-right text-sm text-[var(--muted)]">
-        生成には数分〜十数分かかります。この画面を開いたままにすると止まらずに進みます。閉じると数分後にサーバーが休止して生成も一時停止し、次にアプリを開いたときに続きから再開します。
-      </p>
-      </>
       )}
     </form>
   );

@@ -240,16 +240,6 @@ async function TabContent({
     }
     return (
       <>
-        {!archived && variant.debateCase.sections.length > 0 && (
-          <p className="mb-4">
-            <Link
-              href={`/projects/${projectId}/upload?variant=${variant.id}`}
-              className="inline-flex min-h-11 items-center rounded border border-[var(--accent)] px-4 text-sm font-bold text-[var(--accent)]"
-            >
-              自作の資料をこの立論に登録する
-            </Link>
-          </p>
-        )}
       <SourcesTab
         projectId={projectId}
         variantId={variant.id}

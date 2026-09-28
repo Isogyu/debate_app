@@ -3,7 +3,8 @@
 /**
  * 質疑フローチャート（画面・操作型、v6 要件 §5）
  *
- * 同じ質疑データを「攻める側」「守る側」の両面で見せる（§4.1）。
+ * v7: 「攻める側で見る／守る側で見る」の切り替えはやめ、1つの表示にまとめた。
+ *     台本には、質問のねらい・模範回答・相手の答えから突ける点をすべて出す。
  * 図は連鎖ごとのカードに分け、それぞれ拡大・縮小・折り畳みができる。
  * 1枚の大きな図にしないのは、30〜40問を一度に出すとスマホで迷子になるため。
  */
@@ -102,7 +103,7 @@ interface ViewLine {
   speaker: "質問" | "回答" | "結論";
   text: string;
   kind?: BranchKind;
-  note?: { label: string; text: string };
+  notes?: { label: string; text: string }[];
 }
 
 interface Selection {
@@ -119,7 +120,6 @@ interface Selection {
 function buildScript(
   nodes: FlowNode[],
   sel: Selection,
-  perspective: Perspective,
 ): { lines: ViewLine[]; boxIds: Set<string> } {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const lines: ViewLine[] = [];
@@ -129,14 +129,10 @@ function buildScript(
     lines.push({
       speaker: "質問",
       text: n.question,
-      note:
-        perspective === "defense"
-          ? n.modelAnswer
-            ? { label: "模範回答", text: n.modelAnswer }
-            : undefined
-          : n.purpose
-            ? { label: "ねらい", text: n.purpose }
-            : undefined,
+      notes: [
+        ...(n.purpose ? [{ label: "ねらい", text: n.purpose }] : []),
+        ...(n.modelAnswer ? [{ label: "模範回答", text: n.modelAnswer }] : []),
+      ],
     });
     boxIds.add(questionBoxId(n.id));
   };
@@ -147,10 +143,7 @@ function buildScript(
       speaker: "回答",
       text: b.expectedAnswer,
       kind: b.kind,
-      note:
-        perspective === "attack" && b.exposedWeakness
-          ? { label: "突ける点", text: b.exposedWeakness }
-          : undefined,
+      notes: b.exposedWeakness ? [{ label: "突ける点", text: b.exposedWeakness }] : [],
     });
     boxIds.add(answerBoxId(n.id, i));
   };
@@ -250,12 +243,12 @@ function ScriptPanel({
                   )}
                 </div>
                 <p className="whitespace-pre-wrap">{l.text}</p>
-                {l.note && (
-                  <p className="mt-0.5 text-xs text-[var(--muted)]">
-                    <span className="font-bold">{l.note.label}：</span>
-                    {l.note.text}
+                {l.notes?.map((note) => (
+                  <p key={note.label} className="mt-0.5 text-xs text-[var(--muted)]">
+                    <span className="font-bold">{note.label}：</span>
+                    {note.text}
                   </p>
-                )}
+                ))}
               </li>
             );
           })}
@@ -364,24 +357,22 @@ function ZoomButtons() {
 
 function ChainCanvas({
   chainNodes,
-  perspective,
   activeBoxId,
   pathBoxIds,
   onSelect,
 }: {
   chainNodes: FlowNode[];
-  perspective: Perspective;
   activeBoxId: string | null;
   pathBoxIds: Set<string>;
   onSelect: (box: LayoutBox) => void;
 }) {
   const [layout, setLayout] = useState<{ key: string; value: Layout } | null>(null);
   const [error, setError] = useState(false);
-  const key = `${perspective}:${chainNodes.map((n) => n.id).join(",")}`;
+  const key = chainNodes.map((n) => n.id).join(",");
 
   useEffect(() => {
     let cancelled = false;
-    layoutChain(chainNodes, { subText: perspective === "defense" ? "modelAnswer" : "purpose" })
+    layoutChain(chainNodes, { subText: "purpose" })
       .then((value) => {
         if (!cancelled) setLayout({ key, value });
       })
@@ -391,7 +382,7 @@ function ChainCanvas({
     return () => {
       cancelled = true;
     };
-  }, [chainNodes, perspective, key]);
+  }, [chainNodes, key]);
 
   const current = layout?.key === key ? layout.value : null;
 
@@ -470,7 +461,6 @@ function ChainCanvas({
 function ChainCard({
   chain,
   index,
-  perspective,
   expanded,
   onToggle,
   selection,
@@ -480,7 +470,6 @@ function ChainCard({
 }: {
   chain: ChainGroup<FlowNode>;
   index: number;
-  perspective: Perspective;
   expanded: boolean;
   onToggle: () => void;
   selection: Selection | null;
@@ -492,8 +481,8 @@ function ChainCard({
   const { root, nodes, chainId } = chain;
   const mine = selection?.chainId === chainId ? selection : null;
   const script = useMemo(
-    () => (mine ? buildScript(nodes, mine, perspective) : null),
-    [mine, nodes, perspective],
+    () => (mine ? buildScript(nodes, mine) : null),
+    [mine, nodes],
   );
   const emptySet = useMemo(() => new Set<string>(), []);
   const bodyId = `chain-body-${chainId}`;
@@ -544,7 +533,6 @@ function ChainCard({
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_320px]">
             <ChainCanvas
               chainNodes={nodes}
-              perspective={perspective}
               activeBoxId={mine?.box.id ?? null}
               pathBoxIds={script?.boxIds ?? emptySet}
               onSelect={(box) => onSelect({ chainId, box })}
@@ -555,7 +543,7 @@ function ChainCard({
           // たたんだ状態: 起点の質問と、引き出したい結論だけ
           <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-stretch">
             <CollapsedBox kind="question" text={root.question} />
-            {perspective === "defense" && root.modelAnswer && (
+            {root.modelAnswer && (
               <CollapsedBox kind="admit" label="模範回答" text={root.modelAnswer} />
             )}
             {root.goal && (
@@ -590,24 +578,21 @@ function CollapsedBox({ kind, text, label }: { kind: BoxKind; text: string; labe
 
 export function FlowchartView({
   nodes,
-  perspective: initialPerspective = "attack",
   projectId,
   variantId,
   readOnly = true,
 }: {
   nodes: FlowNode[];
-  perspective?: Perspective;
   /** 渡すと、各連鎖に「この質疑を使う」ボタンを出す */
   projectId?: string;
   variantId?: string;
   readOnly?: boolean;
 }) {
-  const [perspective, setPerspective] = useState<Perspective>(initialPerspective);
   const [paragraph, setParagraph] = useState("");
   const [setOnly, setSetOnly] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
 
-  const allChains = useMemo(() => groupChains(nodes, perspective), [nodes, perspective]);
+  const allChains = useMemo(() => groupChains(nodes, "attack"), [nodes]);
 
   // 最初に開いておく連鎖: 自分で選んだ質疑。なければ先頭の3つ
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -646,28 +631,10 @@ export function FlowchartView({
     return <p className="text-sm text-[var(--muted)]">この立論の質疑はまだありません。</p>;
   }
 
-  const tab = (p: Perspective, label: string, hint: string) => (
-    <button
-      type="button"
-      aria-pressed={perspective === p}
-      onClick={() => setPerspective(p)}
-      title={hint}
-      className={`px-3 py-1.5 text-sm ${
-        perspective === p ? "bg-[var(--accent)] font-bold text-white" : "bg-white hover:bg-gray-50"
-      }`}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <div className="space-y-4">
       <div className="space-y-3 rounded-lg border border-[var(--line)] bg-gray-50 p-3 no-print">
         <div className="flex flex-wrap items-center gap-3">
-          <div role="group" aria-label="見る立場" className="inline-flex overflow-hidden rounded border border-[var(--line)]">
-            {tab("attack", "攻める側で見る", "質問のねらいと、相手の答えから突ける点を強調します")}
-            {tab("defense", "守る側で見る", "各質問への模範回答を強調し、突かれやすい順に並べます")}
-          </div>
           <label className="flex items-center gap-1 text-sm">
             段落
             <select
@@ -711,9 +678,7 @@ export function FlowchartView({
         </div>
         <FlowchartLegend />
         <p className="text-xs text-[var(--muted)]">
-          {perspective === "attack"
-            ? "使う質疑（選んだ順）→ おすすめ度の高い順 に並んでいます。箱を押すと、そこまでの台本が出ます。"
-            : "突かれやすい順（おすすめ度の高い順）に並んでいます。質問の箱の下に模範回答を出しています。"}
+          使う質疑（選んだ順）→ おすすめ度の高い順 に並んでいます。箱を押すと、そこまでの台本（質問のねらい・模範回答・突ける点）が出ます。
         </p>
       </div>
 
@@ -726,7 +691,6 @@ export function FlowchartView({
               key={c.chainId}
               chain={c}
               index={i}
-              perspective={perspective}
               expanded={expanded.has(c.chainId)}
               onToggle={() => toggle(c.chainId)}
               selection={selection}

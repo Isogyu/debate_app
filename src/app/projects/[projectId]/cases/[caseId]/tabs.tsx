@@ -360,7 +360,8 @@ export function QuestionsTab({
     <div>
       <p className="mb-3 text-sm text-[var(--muted)]">
         質問は{nodes.length}問（連鎖{roots.filter((r) => chains.get(r.chainId)!.length > 1).length}本）。
-        相手側から見れば「攻める質疑」、この立論の側から見れば「受ける質疑と回答準備」です。
+        相手チームがこの立論に向けてきそうな質問と、それへの答え方（模範回答）をまとめたものです。
+        この立論で戦うときは答えの準備に、相手としてこの立論と戦うときは質問の準備に使えます。
         試合で使うものを「この質疑を使う」で選ぶと、「使う質疑」とフローチャートでその順に並びます。
       </p>
       <nav className="mb-4 flex flex-wrap gap-2" aria-label="表示">
@@ -435,7 +436,7 @@ function ChainCard({ nodes, select }: { nodes: QNode[]; select: React.ReactNode 
             {n.purpose && <p className="text-[var(--muted)]">ねらい: {n.purpose}</p>}
             {n.modelAnswer && (
               <p className="mt-1">
-                <b>模範回答（守る側）:</b> {n.modelAnswer}
+                <b>模範回答（この立論の側の答え方）:</b> {n.modelAnswer}
               </p>
             )}
             {n.branches.length > 0 && (

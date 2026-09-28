@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * 練習画面の切り替え（タイマー／読み上げ練習／質疑シミュレーター）
+ * 練習画面の切り替え（タイマー／読み上げ練習）
+ *
+ * v7: 質疑シミュレーターへの入口は「質疑練習」に一本化した（ここからは外した）。
+ * 読み上げの推定メーター（読む速さ・適正の帯・実測）も外した。
  */
 
 import Link from "next/link";
 import { useState } from "react";
 import { SpeechTimer } from "@/components/speech-timer";
-import { SpeechMeter } from "@/components/speech-meter";
 import { Pacemaker } from "@/components/pacemaker";
 import {
   CASE_ORIGIN_LABELS,
@@ -28,7 +30,6 @@ export interface PracticeCase {
 const TABS = [
   { key: "timer", label: "タイマー" },
   { key: "reading", label: "読み上げ練習" },
-  { key: "simulator", label: "質疑シミュレーター" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -91,12 +92,8 @@ export function PracticeClient({ projectId, cases }: { projectId: string; cases:
                 </select>
               </label>
               {selected && (
-                // 立論を替えたら、測った速さやペースメーカーの経過もリセットする
+                // 立論を替えたら、ペースメーカーの経過もリセットする
                 <div key={selected.id}>
-                  <SpeechMeter
-                    text={selected.debateCase.fullText}
-                    adviseFixes={selected.origin === "generated"}
-                  />
                   <p className="mb-2 text-sm text-[var(--muted)]">
                     原稿を表示し、経過時間から「いまここまで来ているべき」位置を光らせます。
                     音声認識は使いません（誤った指示で早口になると減点されるため）。
@@ -109,18 +106,6 @@ export function PracticeClient({ projectId, cases }: { projectId: string; cases:
         </div>
       )}
 
-      {tab === "simulator" && (
-        <Link
-          href={`/projects/${projectId}/simulator`}
-          className="block rounded border-2 border-[var(--accent)] p-5 hover:bg-[var(--accent)]/5"
-        >
-          <span className="block text-lg font-bold text-[var(--accent)]">質疑シミュレーターを開く</span>
-          <span className="mt-1 block text-sm text-[var(--muted)]">
-            自分が守る立論と、AIが演じる相手の立論を選んで、質疑をテキストで練習します。
-            終わると講評が出て、詰まった質問は質疑一覧で優先度が上がります。
-          </span>
-        </Link>
-      )}
     </div>
   );
 }

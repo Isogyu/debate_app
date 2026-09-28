@@ -5,20 +5,15 @@
  *
  *  - 実フォーマット（Ⅰ主張／Ⅱ理由／Ⅲ結論）をそのまま画面構造にする
  *  - 【資料N参照】は資料タブの該当箇所へのリンクにする
- *  - 編集はカード単位。再生成は生成立論だけ（自作の立論はAIで書き換えない）
+ *  - 編集はカード単位（v7 で「この部分を再生成」は廃止。直すときは編集で）
+ *  - 読み上げ時間のメーターとタイマーは置かない（v7。練習画面に一本化）
  */
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { splitRefs, SECTION_TYPE_LABELS } from "@/domain/case-format";
-import { SpeechMeter } from "@/components/speech-meter";
 import type { Claim, DebateCase } from "@/domain/types";
-import {
-  regenerateClaim,
-  saveCaseFrame,
-  saveClaim,
-  type ActionState,
-} from "../actions";
+import { saveCaseFrame, saveClaim, type ActionState } from "../actions";
 
 export interface BodyVariant {
   id: string;
@@ -41,12 +36,6 @@ export function BodyTab({
   const [wordPreview, setWordPreview] = useState(false);
   return (
     <div>
-      {/* 時間は超過も余りすぎも減点なので、見ているあいだ常に出す */}
-      <SpeechMeter
-        text={variant.debateCase.fullText}
-        debateCase={variant.debateCase}
-        adviseFixes={variant.origin === "generated"}
-      />
       <div className="mb-4 flex justify-end">
         <button
           onClick={() => setWordPreview(!wordPreview)}
@@ -178,13 +167,12 @@ function ClaimCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [saveState, saveAction, saving] = useActionState<ActionState, FormData>(saveClaim, {});
-  const [regenState, regenAction, regenerating] = useActionState<ActionState, FormData>(regenerateClaim, {});
   const [handled, setHandled] = useState<ActionState | null>(null);
   if (saveState.ok && handled !== saveState) {
     setHandled(saveState);
     setEditing(false);
   }
-  const error = saveState.error ?? regenState.error;
+  const error = saveState.error;
 
   if (editing) {
     return (
@@ -278,25 +266,11 @@ function ClaimCard({
           {error}
         </p>
       )}
-      {!error && regenState.message && !regenerating && (
-        <p role="status" className="mt-2 text-sm text-[#b45309]">
-          {regenState.message}
-        </p>
-      )}
       {!readOnly && (
         <div className="mt-3 flex justify-end gap-2">
           <button onClick={() => setEditing(true)} className="min-h-9 rounded border border-[var(--line)] px-3 text-sm">
             編集
           </button>
-          {variant.origin === "generated" && (
-            <form action={regenAction}>
-              <input type="hidden" name="variantId" value={variant.id} />
-              <input type="hidden" name="claimId" value={claim.id} />
-              <button type="submit" disabled={regenerating} className="min-h-9 rounded border border-[var(--line)] px-3 text-sm disabled:opacity-40">
-                {regenerating ? "再生成中…" : "この部分を再生成"}
-              </button>
-            </form>
-          )}
         </div>
       )}
     </article>
